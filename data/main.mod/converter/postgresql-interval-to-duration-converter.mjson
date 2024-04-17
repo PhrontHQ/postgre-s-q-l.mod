@@ -1,0 +1,25 @@
+{
+    "converter_descriptor": {
+        "object": "montage/core/converter/converter.mjson"
+    },
+    "root": {
+        "prototype": "montage/core/meta/module-object-descriptor",
+        "values": {
+            "name": "PostgreSQLIntervalToDurationConverter",
+            "customPrototype": false,
+            "parent": {
+                "@": "converter_descriptor"
+            },
+            "propertyDescriptors": [],
+            "propertyDescriptorGroups": {},
+            "propertyValidationRules": {},
+            "objectDescriptorModule": {
+                "%": "data/main.mod/converter/postgresql-interval-to-duration-converter.mjson"
+            },
+            "exportName": "PostgreSQLIntervalToDurationConverter",
+            "module": {
+                "%": "data/main.mod/converter/postgresql-interval-to-duration-converter"
+            }
+        }
+    }
+}

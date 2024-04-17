@@ -1,0 +1,25 @@
+{
+    "converter_descriptor": {
+        "object": "montage/core/converter/converter.mjson"
+    },
+    "root": {
+        "prototype": "montage/core/meta/module-object-descriptor",
+        "values": {
+            "name": "ISODateStringToDateConverter",
+            "customPrototype": false,
+            "parent": {
+                "@": "converter_descriptor"
+            },
+            "propertyDescriptors": [],
+            "propertyDescriptorGroups": {},
+            "propertyValidationRules": {},
+            "objectDescriptorModule": {
+                "%": "data/main.mod/converter/i-s-o-date-string-to-date-converter.mjson"
+            },
+            "exportName": "ISODateStringToDateConverter",
+            "module": {
+                "%": "data/main.mod/converter/i-s-o-date-string-to-date-converter"
+            }
+        }
+    }
+}

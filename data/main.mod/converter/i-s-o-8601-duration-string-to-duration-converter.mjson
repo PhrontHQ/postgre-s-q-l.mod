@@ -1,0 +1,25 @@
+{
+    "converter_descriptor": {
+        "object": "montage/core/converter/converter.mjson"
+    },
+    "root": {
+        "prototype": "montage/core/meta/module-object-descriptor",
+        "values": {
+            "name": "ISO8601DurationStringToDurationConverter",
+            "customPrototype": false,
+            "parent": {
+                "@": "converter_descriptor"
+            },
+            "propertyDescriptors": [],
+            "propertyDescriptorGroups": {},
+            "propertyValidationRules": {},
+            "objectDescriptorModule": {
+                "%": "data/main.mod/converter/i-s-o-8601-duration-string-to-duration-converter.mjson"
+            },
+            "exportName": "ISO8601DurationStringToDurationConverter",
+            "module": {
+                "%": "data/main.mod/converter/i-s-o-8601-duration-string-to-duration-converter"
+            }
+        }
+    }
+}

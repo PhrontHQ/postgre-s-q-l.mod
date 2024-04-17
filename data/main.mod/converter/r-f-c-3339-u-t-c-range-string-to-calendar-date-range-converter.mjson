@@ -1,0 +1,25 @@
+{
+    "converter_descriptor": {
+        "object": "montage/core/converter/converter.mjson"
+    },
+    "root": {
+        "prototype": "montage/core/meta/module-object-descriptor",
+        "values": {
+            "name": "RFC3339UTCRangeStringToCalendarDateRangeConverter",
+            "customPrototype": false,
+            "parent": {
+                "@": "converter_descriptor"
+            },
+            "propertyDescriptors": [],
+            "propertyDescriptorGroups": {},
+            "propertyValidationRules": {},
+            "objectDescriptorModule": {
+                "%": "core/converter/r-f-c-3339-u-t-c-range-string-to-calendar-date-range-converter.mjson"
+            },
+            "exportName": "RFC3339UTCRangeStringToCalendarDateRangeConverter",
+            "module": {
+                "%": "data/converter/r-f-c-3339-u-t-c-range-string-to-calendar-date-range-converter"
+            }
+        }
+    }
+}
