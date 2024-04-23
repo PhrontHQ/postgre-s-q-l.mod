@@ -6,7 +6,7 @@ var RFC3339UTCRangeStringToDateRangeConverter = require("./r-f-c-3339-u-t-c-rang
     CalendarDate = require("montage/core/date/calendar-date").CalendarDate,
     Range = require("montage/core/range").Range,
     TimeZone = require("montage/core/date/time-zone").TimeZone,
-    PostgresqlISO8601DateStringToDateComponentValuesCallbackConverter = require("./postgresql-i-s-o-8601-date-string-to-date-component-values-callback-converter").PostgresqlISO8601DateStringToDateComponentValuesCallbackConverter,
+    ISO8601DateStringToDateComponentValuesCallbackConverter = require("montage/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
     singleton;
 
 /**
@@ -20,7 +20,7 @@ var RFC3339UTCRangeStringToCalendarDateRangeConverter = exports.RFC3339UTCRangeS
             if (this.constructor === RFC3339UTCRangeStringToCalendarDateRangeConverter) {
                 if (!singleton) {
                     singleton = this;
-                    this._stringConverter = new PostgresqlISO8601DateStringToDateComponentValuesCallbackConverter();
+                    this._stringConverter = new ISO8601DateStringToDateComponentValuesCallbackConverter();
 
                     this._stringConverter.callback = function dateConverter(year, month, day, hours, minutes, seconds, milliseconds) {
                         return TimeZone.systemTimeZone

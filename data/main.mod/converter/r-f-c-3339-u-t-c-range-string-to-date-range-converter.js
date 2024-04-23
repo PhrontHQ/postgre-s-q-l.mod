@@ -4,7 +4,7 @@
  */
 var Converter = require("montage/core/converter/converter").Converter,
     Range = require("montage/core/range").Range,
-    PostgresqlISO8601DateStringToDateComponentValuesCallbackConverter = require("./postgresql-i-s-o-8601-date-string-to-date-component-values-callback-converter").PostgresqlISO8601DateStringToDateComponentValuesCallbackConverter,
+    ISO8601DateStringToDateComponentValuesCallbackConverter = require("montage/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
     singleton;
 
     //ISO 8601
@@ -23,7 +23,7 @@ var RFC3339UTCRangeStringToDateRangeConverter = exports.RFC3339UTCRangeStringToD
             if (this.constructor === RFC3339UTCRangeStringToDateRangeConverter) {
                 if (!singleton) {
                     singleton = this;
-                    this._stringConverter = new PostgresqlISO8601DateStringToDateComponentValuesCallbackConverter();
+                    this._stringConverter = new ISO8601DateStringToDateComponentValuesCallbackConverter();
 
                     this._stringConverter.callback = function dateConverter(year, month, day, hours, minutes, seconds, milliseconds) {
                         return new Date(Date.UTC(year, --month, day, hours, minutes, seconds, milliseconds));
