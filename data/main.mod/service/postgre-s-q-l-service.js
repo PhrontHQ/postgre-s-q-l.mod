@@ -47,7 +47,7 @@ var RawDataService = require("montage/data/service/raw-data-service").RawDataSer
     path = require("path"),
     fs = require('fs'),
     Timer = require("montage/core/timer").Timer,
-    SecretObjectDescriptor = require("app-infrastructure-data-mod/data/main.mod/model/secret.mjson").montageObject,
+    SecretObjectDescriptor = require("app-infrastructure-data.mod/data/main.mod/model/secret.mjson").montageObject,
     PostgreSQLClient,
     PostgreSQLClientPool,
     ReadWritePostgreSQLClientPool,
