@@ -6,7 +6,7 @@
     "# project. npm only generates files with 2 space indents",
     "# (see https://github.com/npm/npm/pull/3180#issuecomment-16336516)."
   ],
-  "name": "postgre-s-q-l-mod",
+  "name": "postgre-s-q-l.mod",
   "version": "1.0.0",
   "private": false,
   "license": "BSD-3-Clause",
@@ -14,7 +14,7 @@
   "author": "Phront. (https://phront.com/)",
   "repository": {
     "type": "git",
-    "url": "PhrontHQ/postgre-s-q-l-mod"
+    "url": "PhrontHQ/postgre-s-q-l.mod"
   },
   "dependencies": {
     "montage": "github:PhrontHQ/montage#mod",
