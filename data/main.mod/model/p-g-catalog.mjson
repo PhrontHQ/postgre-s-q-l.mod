@@ -1,0 +1,35 @@
+{
+    "root": {
+        "prototype": "montage/core/meta/module-object-descriptor",
+        "values": {
+            "name": "PGCatalog",
+            "propertyDescriptors": [
+                {"@": "namespaceName"},
+                {"@": "oid"}
+            ],
+            "objectDescriptorModule": {
+                "%":"./p-g-catalog.mjson"
+            },
+            "exportName": "PGCatalog",
+            "module": {
+                "%": "./p-g-catalog"
+            }
+
+        }
+    },
+    "namespaceName": {
+        "prototype": "montage/core/meta/property-descriptor",
+        "values": {
+            "name": "namespaceName",
+            "valueType": "string"
+        }
+    },
+    "oid": {
+        "prototype": "montage/core/meta/property-descriptor",
+        "values": {
+            "name": "oid",
+            "valueType": "number"
+        }
+    }
+
+}

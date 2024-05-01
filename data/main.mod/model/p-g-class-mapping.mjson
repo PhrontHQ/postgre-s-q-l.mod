@@ -1,0 +1,40 @@
+{
+    "root": {
+        "prototype": "montage/data/service/expression-data-mapping",
+        "values": {
+            "objectDescriptor": {"@": "PGClassDescriptor"},
+            "rawDataPrimaryKeys":["id"],
+            "objectMapping": {
+                "rules": {
+                    "name": {"<->": "relname"},
+                    "oid": {"<->": "oid"},
+                    "kind": {"<->": "relkind"},
+                    "namespace": {
+                        "<->": "relnamespace",
+                        "converter": {"@": "PGClassConverter"}
+                    }
+
+                }
+            },
+            "rawDataMapping": {
+                "rules": {
+                }
+            },
+            "requisitePropertyNames": [
+                "name","oid","relkind"
+            ]
+        }
+    },
+
+    "PGClassDescriptor": {
+        "object": "../model/p-g-class.mjson"
+    },
+
+    "PGClassConverter": {
+        "prototype": "montage/data/converter/raw-foreign-value-to-object-converter",
+        "values": {
+            "convertExpression": "id == $"
+        }
+    }
+
+}

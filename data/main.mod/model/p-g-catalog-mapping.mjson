@@ -1,0 +1,26 @@
+{
+    "root": {
+        "prototype": "montage/data/service/expression-data-mapping",
+        "values": {
+            "objectDescriptor": {"@": "PGCatalogDescriptor"},
+            "rawDataPrimaryKeys":["id"],
+            "objectMapping": {
+                "rules": {
+                    "name": {"<->": "nspname"},
+                    "oid": {"<->": "oid"}
+                }
+            },
+            "rawDataMapping": {
+                "rules": {
+                }
+            },
+            "requisitePropertyNames": [
+                "name","oid"
+            ]
+        }
+    },
+
+    "PGClassDescriptor": {
+        "object": "../model/p-g-class.mjson"
+    }
+}
