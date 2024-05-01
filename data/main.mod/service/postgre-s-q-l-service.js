@@ -2826,8 +2826,13 @@ exports.PostgreSQLService = PostgreSQLService = RawDataService.specialize(/** @l
                 } else {
                     //If the source syntax is a record and we have a converter, it can't become a column and has to be using a combination of other raw proeprties that have to be in propertyDescriptors
                     if(iObjectRuleSourcePathSyntax && iObjectRuleSourcePathSyntax.type === "record") {
-                        var rawDataService = this.rootService.childServiceForType(iPropertyDescriptorValueDescriptor),
-                            iPropertyDescriptorValueDescriptorMapping = iPropertyDescriptorValueDescriptor && rawDataService.mappingForType(iPropertyDescriptorValueDescriptor),
+                        var rawDataService = this.rootService.childServiceForType(iPropertyDescriptorValueDescriptor);
+
+                        if(!rawDataService) {
+                            throw new Error("No RawDataService found for ", iPropertyDescriptorValueDescriptor.module.id);
+                        }
+
+                        var iPropertyDescriptorValueDescriptorMapping = iPropertyDescriptorValueDescriptor && rawDataService.mappingForType(iPropertyDescriptorValueDescriptor),
                         iPropertyDescriptorValueDescriptorMappingPrimaryKeyPropertyDescriptors = iPropertyDescriptorValueDescriptorMapping && iPropertyDescriptorValueDescriptorMapping.primaryKeyPropertyDescriptors;
 
                         //Check wether we he have these properties defined
