@@ -17,7 +17,7 @@
     "url": "PhrontHQ/postgre-s-q-l.mod"
   },
   "dependencies": {
-    "montage": "github:PhrontHQ/mod#mod",
+    "mod": "github:PhrontHQ/mod#mod",
     "geo.mod": "github:PhrontHQ/geo.mod.git#montage-19",
     "app-infrastructure-data.mod": "github:PhrontHQ/app-infrastructure-data.mod#main",
     "pg": "^8.7.3"
