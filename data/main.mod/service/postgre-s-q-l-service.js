@@ -1,31 +1,31 @@
 
 //var AWSRawDataService = require("./aws/a-w-s-raw-data-service").AWSRawDataService,
-var RawDataService = require("montage/data/service/raw-data-service").RawDataService,
+var RawDataService = require("mod/data/service/raw-data-service").RawDataService,
 
-    Criteria = require("montage/core/criteria").Criteria,
-    ObjectDescriptor = require("montage/core/meta/object-descriptor").ObjectDescriptor,
-    RawEmbeddedValueToObjectConverter = require("montage/data/converter/raw-embedded-value-to-object-converter").RawEmbeddedValueToObjectConverter,
-    KeyValueArrayToMapConverter = require("montage/core/converter/key-value-array-to-map-converter").KeyValueArrayToMapConverter,
-    Range = require("montage/core/range").Range,
+    Criteria = require("mod/core/criteria").Criteria,
+    ObjectDescriptor = require("mod/core/meta/object-descriptor").ObjectDescriptor,
+    RawEmbeddedValueToObjectConverter = require("mod/data/converter/raw-embedded-value-to-object-converter").RawEmbeddedValueToObjectConverter,
+    KeyValueArrayToMapConverter = require("mod/core/converter/key-value-array-to-map-converter").KeyValueArrayToMapConverter,
+    Range = require("mod/core/range").Range,
     WktToGeometryConverter = require("geo.mod/logic/converter/wkt-to-geometry-converter").WktToGeometryConverter,
-    // DataQuery = (require)("montage/data/model/data-query").DataQuery,
-    // DataStream = (require)("montage/data/service/data-stream").DataStream,
-    //Montage = (require)("montage/core/core").Montage,
-    Promise = require("montage/core/promise").Promise,
-    uuid = require("montage/core/uuid"),
-    //DataOrdering = (require)("montage/data/model/data-ordering").DataOrdering,
+    // DataQuery = (require)("mod/data/model/data-query").DataQuery,
+    // DataStream = (require)("mod/data/service/data-stream").DataStream,
+    //Montage = (require)("mod/core/core").Montage,
+    Promise = require("mod/core/promise").Promise,
+    uuid = require("mod/core/uuid"),
+    //DataOrdering = (require)("mod/data/model/data-ordering").DataOrdering,
     //DESCENDING = DataOrdering.DESCENDING,
-    Enum = require("montage/core/enum").Enum,
-    Set = require("montage/core/collections/set"),
-    ObjectDescriptor = require("montage/core/meta/object-descriptor").ObjectDescriptor,
-    PropertyDescriptor = require("montage/core/meta/property-descriptor").PropertyDescriptor,
+    Enum = require("mod/core/enum").Enum,
+    Set = require("mod/core/collections/set"),
+    ObjectDescriptor = require("mod/core/meta/object-descriptor").ObjectDescriptor,
+    PropertyDescriptor = require("mod/core/meta/property-descriptor").PropertyDescriptor,
     SQLJoinStatements = require("./s-q-l-join-statements").SQLJoinStatements,
-    SyntaxInOrderIterator = require("montage/core/frb/syntax-iterator").SyntaxInOrderIterator,
+    SyntaxInOrderIterator = require("mod/core/frb/syntax-iterator").SyntaxInOrderIterator,
 
 
-    DataOperation = require("montage/data/service/data-operation").DataOperation,
-    DataOperationErrorNames = require("montage/data/service/data-operation").DataOperationErrorNames,
-    DataOperationType = require("montage/data/service/data-operation").DataOperationType,
+    DataOperation = require("mod/data/service/data-operation").DataOperation,
+    DataOperationErrorNames = require("mod/data/service/data-operation").DataOperationErrorNames,
+    DataOperationType = require("mod/data/service/data-operation").DataOperationType,
     //PGClass = (require)("../model/p-g-class").PGClass,
 
     fromIni,
@@ -43,10 +43,10 @@ var RawDataService = require("montage/data/service/raw-data-service").RawDataSer
     literal = pgutils.literal,
     escapeString = pgutils.escapeString,
     pgstringify = require('./pgstringify'),
-    parse = require("montage/core/frb/parse"),
+    parse = require("mod/core/frb/parse"),
     path = require("path"),
     fs = require('fs'),
-    Timer = require("montage/core/timer").Timer,
+    Timer = require("mod/core/timer").Timer,
     SecretObjectDescriptor = require("app-infrastructure-data.mod/data/main.mod/model/secret.mjson").montageObject,
     PostgreSQLClient,
     PostgreSQLClientPool,
@@ -826,7 +826,7 @@ exports.PostgreSQLService = PostgreSQLService = RawDataService.specialize(/** @l
                                 because in this case we want something like:
                                 (SELECT "Table"."iDefaultObjectPropertyToSelect_id" FROM phront."Table" WHERE (....some-criteria...),
 
-                                If we could rely on readExpressions being exactly what's needed, maybe we could use that: The montage client code should always include the primary key as it needs to stich things togethe when getting the data back, but in our case we would include only the column that we need, and that would tell the SQL to be just that column to be returned.
+                                If we could rely on readExpressions being exactly what's needed, maybe we could use that: The mod client code should always include the primary key as it needs to stich things togethe when getting the data back, but in our case we would include only the column that we need, and that would tell the SQL to be just that column to be returned.
 
                             */
                             var defaultCriteria = new Criteria().initWithSyntax(iDefaultSyntax.args[0]),
@@ -2327,7 +2327,7 @@ exports.PostgreSQLService = PostgreSQLService = RawDataService.specialize(/** @l
     /*
 
        "timeRange": {
-          "prototype": "montage/core/meta/property-descriptor",
+          "prototype": "mod/core/meta/property-descriptor",
           "values": {
               "name": "timeRange",
               "valueType": "date",
