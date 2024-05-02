@@ -5,8 +5,8 @@
  * @requires montage/core/core
  */
 
- var Montage = require("montage/core/core").Montage,
-    Enum = require("montage/core/enum").Enum,
+ var Montage = require("mod/core/core").Montage,
+    Enum = require("mod/core/enum").Enum,
     SQLJoin,
     SQLJoinType;
 

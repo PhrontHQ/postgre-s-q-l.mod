@@ -1,4 +1,4 @@
-var RawDatabaseClient = require("montage/data/service/raw-database-client").RawDatabaseClient;
+var RawDatabaseClient = require("mod/data/service/raw-database-client").RawDatabaseClient;
 
 
 

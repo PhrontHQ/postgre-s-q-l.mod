@@ -3,10 +3,10 @@
  * @requires montage/core/converter/converter
  */
 var RFC3339UTCRangeStringToDateRangeConverter = require("./r-f-c-3339-u-t-c-range-string-to-date-range-converter").RFC3339UTCRangeStringToDateRangeConverter,
-    CalendarDate = require("montage/core/date/calendar-date").CalendarDate,
-    Range = require("montage/core/range").Range,
-    TimeZone = require("montage/core/date/time-zone").TimeZone,
-    ISO8601DateStringToDateComponentValuesCallbackConverter = require("montage/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
+    CalendarDate = require("mod/core/date/calendar-date").CalendarDate,
+    Range = require("mod/core/range").Range,
+    TimeZone = require("mod/core/date/time-zone").TimeZone,
+    ISO8601DateStringToDateComponentValuesCallbackConverter = require("mod/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
     singleton;
 
 /**

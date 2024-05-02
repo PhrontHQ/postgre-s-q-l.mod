@@ -1,6 +1,6 @@
 {
     "root": {
-        "prototype": "montage/core/meta/module-object-descriptor",
+        "prototype": "mod/core/meta/module-object-descriptor",
         "values": {
             "name": "PGClass",
             "propertyDescriptors": [
@@ -24,28 +24,28 @@
         "object": "./p-g-class"
     },
     "name": {
-        "prototype": "montage/core/meta/property-descriptor",
+        "prototype": "mod/core/meta/property-descriptor",
         "values": {
             "name": "name",
             "valueType": "string"
         }
     },
     "oid": {
-        "prototype": "montage/core/meta/property-descriptor",
+        "prototype": "mod/core/meta/property-descriptor",
         "values": {
             "name": "oid",
             "valueType": "number"
         }
     },
     "kind": {
-        "prototype": "montage/core/meta/property-descriptor",
+        "prototype": "mod/core/meta/property-descriptor",
         "values": {
             "name": "kind",
             "valueType": "string"
         }
     },
     "namespace": {
-        "prototype": "montage/core/meta/property-descriptor",
+        "prototype": "mod/core/meta/property-descriptor",
         "values": {
             "name": "namespace",
             "valueType": "object",

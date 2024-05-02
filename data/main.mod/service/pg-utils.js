@@ -11,8 +11,8 @@
  * README.md file in the root directory of this source tree.
  */
 
-var Range = require("montage/core/range").Range,
-RFC3339UTCRangeStringToRangeConverter = require("montage/core/converter/r-f-c-3339-u-t-c-range-string-to-range-converter").singleton;
+var Range = require("mod/core/range").Range,
+RFC3339UTCRangeStringToRangeConverter = require("mod/core/converter/r-f-c-3339-u-t-c-range-string-to-range-converter").singleton;
 
 
 const parseInputDatesAsUTC = false;

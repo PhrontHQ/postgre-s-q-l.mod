@@ -1,6 +1,6 @@
 {
     "root": {
-        "prototype": "montage/data/service/expression-data-mapping",
+        "prototype": "mod/data/service/expression-data-mapping",
         "values": {
             "objectDescriptor": {"@": "PGClassDescriptor"},
             "rawDataPrimaryKeys":["id"],
@@ -31,7 +31,7 @@
     },
 
     "PGClassConverter": {
-        "prototype": "montage/data/converter/raw-foreign-value-to-object-converter",
+        "prototype": "mod/data/converter/raw-foreign-value-to-object-converter",
         "values": {
             "convertExpression": "id == $"
         }

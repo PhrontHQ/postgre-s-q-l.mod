@@ -2,15 +2,15 @@
  * @module data/main.mod/converter/r-f-c-3339-u-t-c-range-string-to-date-range-converter
  * @requires montage/core/converter/converter
  */
-var Converter = require("montage/core/converter/converter").Converter,
-    Range = require("montage/core/range").Range,
-    ISO8601DateStringToDateComponentValuesCallbackConverter = require("montage/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
+var Converter = require("mod/core/converter/converter").Converter,
+    Range = require("mod/core/range").Range,
+    ISO8601DateStringToDateComponentValuesCallbackConverter = require("mod/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
     singleton;
 
     //ISO 8601
 
     //for Date.parseRFC3339
-    require("montage/core/extras/date");
+    require("mod/core/extras/date");
 
 /**
  * @class RFC3339UTCRangeStringToDateRangeConverter

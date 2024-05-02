@@ -5,7 +5,7 @@
  * @requires montage/core/core
  */
 
- var Montage = require("montage/core/core").Montage;
+ var Montage = require("mod/core/core").Montage;
 
  /**
   * a SQLJoinStatements maintains information about joins being created by the conversion

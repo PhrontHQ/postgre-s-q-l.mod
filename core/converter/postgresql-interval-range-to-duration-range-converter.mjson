@@ -1,9 +1,9 @@
 {
     "converter_descriptor": {
-        "object": "montage/core/converter/converter.mjson"
+        "object": "mod/core/converter/converter.mjson"
     },
     "root": {
-        "prototype": "montage/core/meta/module-object-descriptor",
+        "prototype": "mod/core/meta/module-object-descriptor",
         "values": {
             "name": "PostgresqlIntervalRangeToDurationRangeConverter",
             "customPrototype": false,

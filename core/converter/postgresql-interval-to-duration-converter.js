@@ -2,9 +2,9 @@
  * @module data/main.mod/converter/postgresql-interval-to-duration-converter
  * @requires montage/core/converter/converter
  */
-var Converter = require("montage/core/converter/converter").Converter,
-    Duration = require("montage/core/duration").Duration,
-    Enum = require("montage/core/enum").Enum,
+var Converter = require("mod/core/converter/converter").Converter,
+    Duration = require("mod/core/duration").Duration,
+    Enum = require("mod/core/enum").Enum,
     IntervalStyle,
     intervalstyle = [
         "SQLStandard", "Postgres", "PostgresVerbose", "ISO8601"
