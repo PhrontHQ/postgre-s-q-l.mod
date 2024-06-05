@@ -19,7 +19,6 @@
   "dependencies": {
     "mod": "github:PhrontHQ/mod#main",
     "geo.mod": "github:PhrontHQ/geo.mod#main",
-    "app-infrastructure-data.mod": "github:PhrontHQ/app-infrastructure-data.mod#main",
     "pg": "^8.7.3"
   },
   "devDependencies": {

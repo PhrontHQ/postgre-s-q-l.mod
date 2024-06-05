@@ -47,12 +47,11 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     path = require("path"),
     fs = require('fs'),
     Timer = require("mod/core/timer").Timer,
-    SecretObjectDescriptor = require("app-infrastructure-data.mod/data/main.mod/model/secret.mjson").montageObject,
+    SecretObjectDescriptor = require("mod/data/model/app/secret.mjson").montageObject,
     PostgreSQLClient,
     PostgreSQLClientPool,
     ReadWritePostgreSQLClientPool,
     ReadOnlyPostgreSQLClientPool,
-    PostgreSQLService,
     ProcessEnv = process.env;
 
 
@@ -130,58 +129,106 @@ var createTableTemplatePrefix = `CREATE TABLE :schema.":table"
 * @class
 * @extends RawDataService
 */
-exports.PostgreSQLService = PostgreSQLService = RawDataService.specialize(/** @lends PostgreSQLService.prototype */ {
+const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService extends RawDataService {/** @lends PostgreSQLService */
+
+    constructor() {
+        super();
+
+        if(this._mapResponseHandlerByOperationType.size === 0) {
+            this._mapResponseHandlerByOperationType.set(DataOperationType.create, this.mapHandledCreateResponseToOperation);
+            this._mapResponseHandlerByOperationType.set(DataOperationType.read, this.mapHandledReadResponseToOperation);
+            this._mapResponseHandlerByOperationType.set(DataOperationType.update, this.mapHandledUpdateResponseToOperation);
+            this._mapResponseHandlerByOperationType.set(DataOperationType.delete, this.mapHandledDeleteResponseToOperation);
+        }
+
+        this._columnNamesByObjectDescriptor = new Map();
+        this._rawDataDescriptorByObjectDescriptor = new Map();
+
+        /*
+            Shifted from listening to mainService to getting events on ourselve,
+            as we should be in the line of propagation for the types we handle.
+
+            There are going to be bugs if 2 RawDataServices handle the same type based on current implementaion, and that needs to be fixed.
+
+            Either each needs to observe each types, kinda kills event delegation optimization, so we need to implement an alterative to Target.nextTarget to be able to either return an array, meaning that it could end up bifurcating, or we add an alternative called composedPath (DOM method name on Event), propagationPath (better) or targetPropagationPath, or nextTargetPath, that includes eveything till the top.
+        */
+        // this.addEventListener(DataOperation.Type.ReadOperation,this,false);
+        // this.addEventListener(DataOperation.Type.UpdateOperation,this,false);
+        // this.addEventListener(DataOperation.Type.CreateOperation,this,false);
+        // this.addEventListener(DataOperation.Type.DeleteOperation,this,false);
+        // this.addEventListener(DataOperation.Type.PerformTransactionOperation,this,false);
+        // this.addEventListener(DataOperation.Type.CreateTransactionOperation,this,false);
+        // this.addEventListener(DataOperation.Type.AppendTransactionOperation,this,false);
+        // this.addEventListener(DataOperation.Type.CommitTransactionOperation,this,false);
+        // this.addEventListener(DataOperation.Type.RollbackTransactionOperation,this,false);
+
+        /*
+            Kickstart loading dependencies as we always need this data service:
+            The Promise.all() returned is cached, so it doesn't matter wether it's done or not
+            by the time the worker's function handles the message
+        */
+        //this.rawClientPromises;
+
+
+        // this._registeredConnectionsByIdentifier = new Map();
+
+    }
+};
+
+// exports.PostgreSQLService = PostgreSQLService = RawDataService.specialize(/** @lends PostgreSQLService.prototype */ {
 
     /***************************************************************************
      * Initializing
      */
 
-    constructor: {
-        value: function PostgreSQLService() {
-            //"use strict";
+    // constructor: {
+    //     value: function PostgreSQLService() {
+    //         //"use strict";
 
-            this.super();
-
-
-            if(this._mapResponseHandlerByOperationType.size === 0) {
-                this._mapResponseHandlerByOperationType.set(DataOperationType.create, this.mapHandledCreateResponseToOperation);
-                this._mapResponseHandlerByOperationType.set(DataOperationType.read, this.mapHandledReadResponseToOperation);
-                this._mapResponseHandlerByOperationType.set(DataOperationType.update, this.mapHandledUpdateResponseToOperation);
-                this._mapResponseHandlerByOperationType.set(DataOperationType.delete, this.mapHandledDeleteResponseToOperation);
-            }
-
-            this._columnNamesByObjectDescriptor = new Map();
-            this._rawDataDescriptorByObjectDescriptor = new Map();
-
-            /*
-                Shifted from listening to mainService to getting events on ourselve,
-                as we should be in the line of propagation for the types we handle.
-
-                There are going to be bugs if 2 RawDataServices handle the same type based on current implementaion, and that needs to be fixed.
-
-                Either each needs to observe each types, kinda kills event delegation optimization, so we need to implement an alterative to Target.nextTarget to be able to either return an array, meaning that it could end up bifurcating, or we add an alternative called composedPath (DOM method name on Event), propagationPath (better) or targetPropagationPath, or nextTargetPath, that includes eveything till the top.
-            */
-            // this.addEventListener(DataOperation.Type.ReadOperation,this,false);
-            // this.addEventListener(DataOperation.Type.UpdateOperation,this,false);
-            // this.addEventListener(DataOperation.Type.CreateOperation,this,false);
-            // this.addEventListener(DataOperation.Type.DeleteOperation,this,false);
-            // this.addEventListener(DataOperation.Type.PerformTransactionOperation,this,false);
-            // this.addEventListener(DataOperation.Type.CreateTransactionOperation,this,false);
-            // this.addEventListener(DataOperation.Type.AppendTransactionOperation,this,false);
-            // this.addEventListener(DataOperation.Type.CommitTransactionOperation,this,false);
-            // this.addEventListener(DataOperation.Type.RollbackTransactionOperation,this,false);
-
-            /*
-                Kickstart loading dependencies as we always need this data service:
-                The Promise.all() returned is cached, so it doesn't matter wether it's done or not
-                by the time the worker's function handles the message
-            */
-            //this.rawClientPromises;
+    //         this.super();
 
 
-            // this._registeredConnectionsByIdentifier = new Map();
-        }
-    },
+    //         if(this._mapResponseHandlerByOperationType.size === 0) {
+    //             this._mapResponseHandlerByOperationType.set(DataOperationType.create, this.mapHandledCreateResponseToOperation);
+    //             this._mapResponseHandlerByOperationType.set(DataOperationType.read, this.mapHandledReadResponseToOperation);
+    //             this._mapResponseHandlerByOperationType.set(DataOperationType.update, this.mapHandledUpdateResponseToOperation);
+    //             this._mapResponseHandlerByOperationType.set(DataOperationType.delete, this.mapHandledDeleteResponseToOperation);
+    //         }
+
+    //         this._columnNamesByObjectDescriptor = new Map();
+    //         this._rawDataDescriptorByObjectDescriptor = new Map();
+
+    //         /*
+    //             Shifted from listening to mainService to getting events on ourselve,
+    //             as we should be in the line of propagation for the types we handle.
+
+    //             There are going to be bugs if 2 RawDataServices handle the same type based on current implementaion, and that needs to be fixed.
+
+    //             Either each needs to observe each types, kinda kills event delegation optimization, so we need to implement an alterative to Target.nextTarget to be able to either return an array, meaning that it could end up bifurcating, or we add an alternative called composedPath (DOM method name on Event), propagationPath (better) or targetPropagationPath, or nextTargetPath, that includes eveything till the top.
+    //         */
+    //         // this.addEventListener(DataOperation.Type.ReadOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.UpdateOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.CreateOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.DeleteOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.PerformTransactionOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.CreateTransactionOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.AppendTransactionOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.CommitTransactionOperation,this,false);
+    //         // this.addEventListener(DataOperation.Type.RollbackTransactionOperation,this,false);
+
+    //         /*
+    //             Kickstart loading dependencies as we always need this data service:
+    //             The Promise.all() returned is cached, so it doesn't matter wether it's done or not
+    //             by the time the worker's function handles the message
+    //         */
+    //         //this.rawClientPromises;
+
+
+    //         // this._registeredConnectionsByIdentifier = new Map();
+    //     }
+    // },
+
+    PostgreSQLService.addClassProperties({
 
     usePerformTransaction: {
         value: true
