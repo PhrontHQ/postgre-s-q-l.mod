@@ -50,18 +50,58 @@ var PostgreSQLClientPool = exports.PostgreSQLClientPool = RawDatabaseClientPool.
 
     createRawClientPool: {
         value: function() {
+
+            if(!this.databaseCredentials) {
+                return null;
+            }
+
             var connectionOptions = {
-                host: this.readWriteEndoint.endpoint,
-                port: this.databaseCredentials.value.port,
-                user: this.databaseCredentials.value.username,
+                host: this.readWriteEndoint
+                    ? this.readWriteEndoint.endpoint
+                    : this.databaseCredentials.host,
+                port: this.databaseCredentials.port,
+                user: this.databaseCredentials.username,
                 // database: this.databaseCredentials.value.dbClusterIdentifier,
                 database: this.connection.database,
-                password: this.databaseCredentials.value.password
+                password: this.databaseCredentials.password
             };
+
+            if(this.databaseCredentials.clientPrivateKey || this.databaseCredentials.clientCertificate || this.databaseCredentials.serverCertificate) {
+                  // this object will be passed to the TLSSocket constructor
+                let ssl = connectionOptions.ssl = {
+                    rejectUnauthorized: false,
+                };
+
+                /*
+                    https://node-postgres.com/features/ssl
+
+                    ssl: {
+                        rejectUnauthorized: false,
+                        ca: fs.readFileSync('/path/to/server-certificates/root.crt').toString(),
+                        key: fs.readFileSync('/path/to/client-key/postgresql.key').toString(),
+                        cert: fs.readFileSync('/path/to/client-certificates/postgresql.crt').toString(),
+                    },
+
+                */
+                if(this.databaseCredentials.serverCertificate) {
+                    let serverCertificate = Buffer.from(this.databaseCredentials.serverCertificate, 'base64').toString('binary');
+                    ssl.ca = serverCertificate;
+                }
+                
+                if(this.databaseCredentials.clientPrivateKey) {
+                    let clientPrivateKey = Buffer.from(this.databaseCredentials.clientPrivateKey, 'base64').toString('binary');
+                    ssl.key = clientPrivateKey;
+                }
+
+                if(this.databaseCredentials.clientCertificate) {
+                    let clientCertificate = Buffer.from(this.databaseCredentials.clientCertificate, 'base64').toString('binary');
+                    ssl.cert = clientCertificate;
+                }
+            }
 
             //console.debug("connectionOptions: ",connectionOptions);
 
-            return new this.constructor.PostgreSQLClientPool(connectionOptions);
+            return new this.constructor.rawPostgreSQLClientPool(connectionOptions);
         }
     },
 
@@ -73,7 +113,7 @@ var PostgreSQLClientPool = exports.PostgreSQLClientPool = RawDatabaseClientPool.
 
     connectForDataOperation: {
         value: function(dataOperation, callback) {
-            return this.rawClientPool.connect(callback);
+            return this.rawClientPool?.connect(callback);
         }
     }
 

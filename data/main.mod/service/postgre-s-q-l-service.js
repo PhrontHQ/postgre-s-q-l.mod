@@ -429,7 +429,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 readOperation.type = DataOperation.Type.ReadOperation;
                 readOperation.target = SecretObjectDescriptor;
                 readOperation.criteria = new Criteria().initWithExpression("name == $.name", {
-                    name: `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.stage}-${this.connection.database}-database`
+                    name: this.connection.secretName || `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.stage}-${this.connection.database}-database`
                 });
 
                 SecretObjectDescriptor.addEventListener(DataOperation.Type.ReadCompletedOperation, (readCompletedOperation) => {
@@ -438,8 +438,11 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                      /*
                         TODO: clean up who gets to know / holds databaseCredentials. It sounds that like now belongs on the client side.
                      */
-                    const databaseCredentials = readCompletedOperation.data[0];
+                    const secret = readCompletedOperation.data[0],
+                        databaseCredentials = secret.value;
+
                     if(this.clientPool) {
+                        //Hard-coded custom object-mapping
                         this.clientPool.databaseCredentials = databaseCredentials;
                     }
                     resolve((this.databaseCredentials = databaseCredentials));
@@ -450,7 +453,9 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
                 SecretObjectDescriptor.addEventListener(DataOperation.Type.ReadFailedOperation, function(readFailedOperation) {
                     readFailedOperation.stopImmediatePropagation();
-                    reject(readFailedOperation.data);
+                    //reject(readFailedOperation.data);
+                    console.error(readFailedOperation.data);
+                    resolve(null);
                 }, {
                     capture: true,
                     once: true
@@ -503,6 +508,9 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         }
     },
 
+    connectionIdentifer: {
+        value: undefined
+    },
 
     _connection: {
         value: undefined
@@ -519,7 +527,12 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
                     -> https://www.stackovercloud.com/2020/06/30/amazon-rds-proxy-now-generally-available/
                 */
-                if(!this.currentEnvironment.isAWS) {
+
+                //If we have an connectionIdentifer, we go for it, otherwise we go for a stage-bases logic
+                if(this.connectionIdentifer) {
+                    this.connection = this.connectionForIdentifier(this.connectionIdentifer);
+                }
+                else if(!this.currentEnvironment.isAWS) {
                     this.connection = this.connectionForIdentifier(`local-${this.currentEnvironment.stage}`);
                 } else {
                     this.connection = this.connectionForIdentifier(this.currentEnvironment.stage);

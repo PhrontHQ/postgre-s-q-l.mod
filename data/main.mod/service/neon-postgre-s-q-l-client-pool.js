@@ -34,7 +34,7 @@ const NeonPostgreSQLClientPool = exports.NeonPostgreSQLClientPool = PostgreSQLCl
 
     createRawClientPool: {
         value: function() {
-            const URL = `postgres://${this.databaseCredentials.value.username}:${this.databaseCredentials.value.password}@${this.databaseCredentials.value.host}/${this.connection.database}?options=project%3D${this.databaseCredentials.value.endpointIdentifier}`;
+            const URL = `postgres://${this.databaseCredentials.username}:${this.databaseCredentials.password}@${this.databaseCredentials.host}/${this.connection.database}?options=project%3D${this.databaseCredentials.endpointIdentifier}`;
             var connectionOptions = {
                 connectionString: URL,
                 ssl: {
