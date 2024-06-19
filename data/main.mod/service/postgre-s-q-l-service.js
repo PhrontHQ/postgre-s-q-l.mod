@@ -3450,7 +3450,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                                 resolve(true);
                             }
                         }
-                    });
+                    }, dataOperation);
 
                 });
 
@@ -3463,8 +3463,8 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
     },
 
     performRawDataOperation: {
-        value: function (rawDataOperation, callback) {
-            return this.executeStatement(rawDataOperation, callback);
+        value: function (rawDataOperation, callback, dataOperation) {
+            return this.executeStatement(rawDataOperation, callback, dataOperation);
         }
     },
 
@@ -3506,7 +3506,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
                     operation.target.dispatchEvent(operation);
 
-                });
+                }, createOperation);
             });
         }
     },
@@ -3759,8 +3759,9 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
             var data = createOperation.data;
 
-            if (createOperation.data === createOperation.target._montage_metadata.moduleId.removeSuffix(".mjson")) {
-                createOperation.data = createOperation.target;
+            if (createOperation.data === createOperation.target.module.id) {
+            //if (createOperation.data === createOperation.target._montage_metadata.moduleId.removeSuffix(".mjson")) {
+                    createOperation.data = createOperation.target;
                 return this.handleCreateObjectDescriptorOperation(createOperation);
             } else {
                 var referrer = createOperation.referrer;
@@ -3814,15 +3815,19 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                         INSERT INTO users (firstname, lastname) VALUES ('Joe', 'Cool') RETURNING id;
                     */
                     rawDataOperation.sql = this._mapCreateOperationToSQL(createOperation, rawDataOperation, record);
+                    var promise = Promise.is(rawDataOperation.sql) ? rawDataOperation.sql : Promise.resolve(rawDataOperation.sql);
                     //console.log(sql);
-                    self.executeStatement(rawDataOperation, function (err, data) {
-                        if(err) {
-                            console.error("handleCreateOperation Error",createOperation,rawDataOperation,err);
-                        }
-                        var operation = self.mapHandledCreateResponseToOperation(createOperation, err, data, record);
-
-                        operation.target.dispatchEvent(operation);
-                    });
+                    promise.then((sql) => {
+                        rawDataOperation.sql = sql;
+                        self.executeStatement(rawDataOperation, function (err, data) {
+                            if(err) {
+                                console.error("handleCreateOperation Error",createOperation,rawDataOperation,err);
+                            }
+                            var operation = self.mapHandledCreateResponseToOperation(createOperation, err, data, record);
+    
+                            operation.target.dispatchEvent(operation);
+                        }, createOperation);    
+                    })
                 }
 
             }
@@ -3839,7 +3844,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
             operation.target = createOperation.target;
             if (err) {
                 // an error occurred
-                console.log(err, err.stack, rawDataOperation);
+                console.log(err, err.stack, createOperation);
                 operation.type = DataOperation.Type.CreateFailedOperation;
                 //Should the data be the error?
                 operation.data = err;
@@ -5368,8 +5373,12 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                         //Returns the client to  the pool I assume
                         done()
                         if (err) {
-                            console.error("sendDirectStatement() client.query error: ",err);
-                            callback(err);
+                            if(err.message.includes("already exists") && dataOperation.type === DataOperation.Type.CreateOperation && params.sql.startsWith("CREATE TABLE")) {
+                                callback(null, res);
+                            } else {
+                                console.error("sendDirectStatement() client.query error: ",err);
+                                callback(err);    
+                            }
                         } else {
                             callback(null, res);
                         }
