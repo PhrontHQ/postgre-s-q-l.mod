@@ -1,5 +1,4 @@
 
-//var AWSRawDataService = require("./aws/a-w-s-raw-data-service").AWSRawDataService,
 var RawDataService = require("mod/data/service/raw-data-service").RawDataService,
 
     Criteria = require("mod/core/criteria").Criteria,
@@ -8,7 +7,7 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     KeyValueArrayToMapConverter = require("mod/core/converter/key-value-array-to-map-converter").KeyValueArrayToMapConverter,
     Range = require("mod/core/range").Range,
     WktToGeometryConverter = require("geo.mod/logic/converter/wkt-to-geometry-converter").WktToGeometryConverter,
-    // DataQuery = (require)("mod/data/model/data-query").DataQuery,
+    DataQuery = require("mod/data/model/data-query").DataQuery,
     // DataStream = (require)("mod/data/service/data-stream").DataStream,
     //Montage = (require)("mod/core/core").Montage,
     Promise = require("mod/core/promise").Promise,
@@ -424,45 +423,33 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: function (clientPool, promises) {
             promises.push(new Promise( (resolve, reject) => {
 
-                //TODO later: replace this with a proper DataService fetchData()
-                var readOperation = new DataOperation();
-                readOperation.type = DataOperation.Type.ReadOperation;
-                readOperation.target = SecretObjectDescriptor;
-                readOperation.criteria = new Criteria().initWithExpression("name == $.name", {
-                    name: this.connection.secretName || `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.stage}-${this.connection.database}-database`
-                });
+                let secretCriteria = new Criteria().initWithExpression("name == $.name", {
+                        name: this.connection.secretName || `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.stage}-${this.connection.database}-database`
+                    }),
+                    secretQuery = DataQuery.withTypeAndCriteria(SecretObjectDescriptor, secretCriteria);
+    
+                this.mainService.fetchData(secretQuery)
+                .then((result) => {
+                    if(result) {
 
-                SecretObjectDescriptor.addEventListener(DataOperation.Type.ReadCompletedOperation, (readCompletedOperation) => {
-                    readCompletedOperation.stopImmediatePropagation();
-
-                     /*
-                        TODO: clean up who gets to know / holds databaseCredentials. It sounds that like now belongs on the client side.
-                     */
-                    const secret = readCompletedOperation.data[0],
+                        secret = result[0];
                         databaseCredentials = secret.value;
 
-                    if(this.clientPool) {
-                        //Hard-coded custom object-mapping
-                        this.clientPool.databaseCredentials = databaseCredentials;
+                        if(this.clientPool) {
+                            //Hard-coded custom object-mapping
+                            this.clientPool.databaseCredentials = databaseCredentials;
+                        }
+                        resolve((this.databaseCredentials = databaseCredentials));
+
+                    } else {
+                        console.warn("PostgreSQLService: no secret found with name: ",secretCriteria.parameters.name);
+                        resolve(null);    
                     }
-                    resolve((this.databaseCredentials = databaseCredentials));
-                }, {
-                    capture: true,
-                    once: true
-                });
-
-                SecretObjectDescriptor.addEventListener(DataOperation.Type.ReadFailedOperation, function(readFailedOperation) {
-                    readFailedOperation.stopImmediatePropagation();
-                    //reject(readFailedOperation.data);
-                    console.error(readFailedOperation.data);
+                }, (error) => {
+                    console.log("fetchData failed:",error);
                     resolve(null);
-                }, {
-                    capture: true,
-                    once: true
                 });
-
-                SecretObjectDescriptor.dispatchEvent(readOperation);
-
+    
             }));
 
         }
@@ -512,9 +499,6 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: undefined
     },
 
-    _connection: {
-        value: undefined
-    },
 
     connection: {
         get: function() {
@@ -528,7 +512,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     -> https://www.stackovercloud.com/2020/06/30/amazon-rds-proxy-now-generally-available/
                 */
 
-                //If we have an connectionIdentifer, we go for it, otherwise we go for a stage-bases logic
+                //If we have an connectionIdentifer, we go for it, otherwise we go for a stage-based logic
                 if(this.connectionIdentifer) {
                     this.connection = this.connectionForIdentifier(this.connectionIdentifer);
                 }
