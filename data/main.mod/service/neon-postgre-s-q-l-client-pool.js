@@ -10,8 +10,8 @@ PGPASSWORD='123456'
 ENDPOINT_ID='multiplayer-shopping-mod'
 
 // app.js
-const { Pool } = require('pg');
-require('dotenv').config();
+const { Pool } = r-equire('pg');
+r-equire('dotenv').config();
 
 const { PGHOST, PGDATABASE, PGUSER, PGPASSWORD, ENDPOINT_ID } = process.env;
 const URL = `postgres://${PGUSER}:${PGPASSWORD}@${PGHOST}/${PGDATABASE}?options=project%3D${ENDPOINT_ID}`;
