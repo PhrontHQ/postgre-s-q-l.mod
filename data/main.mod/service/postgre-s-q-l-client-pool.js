@@ -19,31 +19,38 @@ var PostgreSQLClientPool = exports.PostgreSQLClientPool = RawDatabaseClientPool.
         }
     },
 
+    _rawClientPromise: {
+        value: undefined
+    },
     rawClientPromises: {
         get: function () {
-            var promises = this.super();
+            if (!this._rawClientPromise) {
 
-            promises.push(
-                require.async("pg").then((exports) => {
-                    PostgreSQLClientPool.rawPostgreSQLClient = exports.Client;
-                    PostgreSQLClientPool.rawPostgreSQLClientPool = exports.Pool;
-                })
-            );
+                this._rawClientPromise = this.super();
 
-            if(this.delegate && this.delegate.postgreSQLClientPoolWillResolveRawClientPromises) {
-                /*
-                    Gives a chance to our delegate to add to those promises.
+                this._rawClientPromise.push(
+                    require.async("pg").then((exports) => {
+                        PostgreSQLClientPool.rawPostgreSQLClient = exports.Client;
+                        PostgreSQLClientPool.rawPostgreSQLClientPool = exports.Pool;
+                    })
+                );
 
-                    First use is to keep in our PostgreSQLDataService that knows how to get the user/password from AWS's secret manager to go do that for us.
-                */
-                this.delegate.postgreSQLClientPoolWillResolveRawClientPromises(this, promises);
+                if(this.delegate && this.delegate.postgreSQLClientPoolWillResolveRawClientPromises) {
+                    /*
+                        Gives a chance to our delegate to add to those promises.
+
+                        First use is to keep in our PostgreSQLDataService that knows how to get the user/password from AWS's secret manager to go do that for us.
+                    */
+                    this.delegate.postgreSQLClientPoolWillResolveRawClientPromises(this, this._rawClientPromise);
+                }
+
+                // promises.push(
+                //     this.loadDatabaseCredentialsFromSecret()
+                // );
+
             }
+            return this._rawClientPromise;
 
-            // promises.push(
-            //     this.loadDatabaseCredentialsFromSecret()
-            // );
-
-            return promises;
         }
     },
 
