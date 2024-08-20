@@ -419,7 +419,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
     */
 
-        postgreSQLClientPoolWillResolveRawClientPromises: {
+    postgreSQLClientPoolWillResolveRawClientPromises: {
         value: function (clientPool, promises) {
             promises.push(new Promise( (resolve, reject) => {
 
@@ -446,8 +446,8 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                         resolve(null);    
                     }
                 }, (error) => {
-                    console.log("fetchData failed:",error);
-                    resolve(null);
+                    //console.log("fetchData failed:",error);
+                    reject(error);
                 });
     
             }));
@@ -473,27 +473,27 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         }
     },
 
-    _rawClientPromise: {
-        value: undefined
-    },
+    // _rawClientPromise: {
+    //     value: undefined
+    // },
 
-    rawClientPromise: {
-        get: function () {
-            if (!this._rawClientPromise) {
-                this._rawClientPromise = Promise.all(this.rawClientPromises).then(() => { return this.rawClient;});
-            }
-            return this._rawClientPromise;
-        }
-    },
+    // rawClientPromise: {
+    //     get: function () {
+    //         if (!this._rawClientPromise) {
+    //             this._rawClientPromise = Promise.all(this.rawClientPromises).then(() => { return this.rawClient;});
+    //         }
+    //         return this._rawClientPromise;
+    //     }
+    // },
 
-    _rawClient: {
-        value: undefined
-    },
-    rawClient: {
-        get: function () {
-            return this._rawClient;
-        }
-    },
+    // _rawClient: {
+    //     value: undefined
+    // },
+    // rawClient: {
+    //     get: function () {
+    //         return this._rawClient;
+    //     }
+    // },
 
     connectionIdentifer: {
         value: undefined
@@ -1862,7 +1862,13 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                             resolve(operation);
                         }
 
-                    }, readOperation);
+                    }, readOperation)
+                    .catch(error => {
+                        // let operation = this.responseOperationForReadOperation(readOperation, error, null, false/*isNotLast*/);
+                        // readOperation.target.dispatchEvent(operation);
+                        reject(error);
+
+                    })
                 } else {
                     readOperationExecutedCount++;
 
@@ -1875,7 +1881,8 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 /*
                     now we loop on all the other -nested- read operations
                 */
-            return firstPromise.then(function(firstReadUpdateOperation) {
+            //return 
+            firstPromise.then(function(firstReadUpdateOperation) {
                 if(readOperationsCount > 0) {
 
                     for(i=0, countI = readOperationsCount;(i<countI); i++) {
@@ -1914,8 +1921,9 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     objectDescriptor.dispatchEvent(firstReadUpdateOperation);
                 }
                 return firstReadUpdateOperation;
-            }, function(errorOperation) {
-                objectDescriptor.dispatchEvent(errorOperation);
+            }, function(error) {
+                let operation = self.responseOperationForReadOperation(readOperation, error, null, false/*isNotLast*/);
+                readOperation.target.dispatchEvent(operation);
             });
 
             //});
@@ -5296,7 +5304,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
     batchExecuteStatement: {
         value: function (params, callback) {
             //this.rawClient.batchExecuteStatement(params, callback);
-            this.rawClientPromise.then(() => {
+            return this.rawClientPromise.then(() => {
                 this.rawClient.send(new BatchExecuteStatementCommand(params), callback);
             });
         }
@@ -5306,13 +5314,13 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: function (params, callback) {
             if(this.useDataAPI) {
                     //this.rawClient.beginTransaction(params, callback);
-                this.rawClientPromise.then(() => {
+                return this.rawClientPromise.then(() => {
                     this.rawClient.send(new BeginTransactionCommand(params), callback);
                 });
             } else {
 
                 params.sql = "BEGIN";
-                this.sendDirectStatement(params, callback);
+                return this.sendDirectStatement(params, callback);
             }
         }
     },
@@ -5321,19 +5329,19 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: function (params, callback) {
             if(this.useDataAPI) {
                 // this.rawClient.commitTransaction(params, callback);
-                this.rawClientPromise.then(() => {
+                return this.rawClientPromise.then(() => {
                     this.rawClient.send(new CommitTransactionCommand(params), callback);
                 });
             } else {
                 params.sql = "COMMIT";
-                this.sendDirectStatement(params, callback);
+                return this.sendDirectStatement(params, callback);
             }
         }
     },
 
     sendDirectStatement: {
         value: function (params, callback, dataOperation) {
-            this.rawClientPromise.then(() => {
+            return this.rawClientPromise.then(() => {
                 // callback - checkout a client
                 this.clientPool.connectForDataOperation(dataOperation, (err, client, done) => {
                   if (err) {
@@ -5370,7 +5378,11 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                   }
 
                 });
-            });
+            }).catch(error => {
+                // let operation = this.responseOperationForReadOperation(dataOperation, error, null, false/*isNotLast*/);
+                // dataOperation.target.dispatchEvent(operation);
+                throw error;
+            })
         }
     },
 
@@ -5378,11 +5390,11 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: function executeStatement(params, callback, dataOperation) {
             if(this.useDataAPI) {
                 //this.rawClient.executeStatement(params, callback);
-                this.rawClientPromise.then(() => {
+                return this.rawClientPromise.then(() => {
                     this.rawClient.send(new ExecuteStatementCommand(params), callback);
                 });
             } else {
-                this.sendDirectStatement(params, callback, dataOperation);
+                return this.sendDirectStatement(params, callback, dataOperation);
             }
         }
     },
@@ -5390,12 +5402,12 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: function rollbackTransaction(params, callback) {
             if(this.useDataAPI) {
                 //this.rawClient.rollbackTransaction(params, callback);
-                this.rawClientPromise.then(() => {
+                return this.rawClientPromise.then(() => {
                     this.rawClient.send(new RollbackTransactionCommand(params), callback);
                 });
             } else {
                 params.sql = "ROLLBACK";
-                this.sendDirectStatement(params, callback);
+                return this.sendDirectStatement(params, callback);
             }
         }
     }
