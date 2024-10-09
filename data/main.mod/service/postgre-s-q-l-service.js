@@ -1,6 +1,6 @@
 
 var RawDataService = require("mod/data/service/raw-data-service").RawDataService,
-
+    Montage = require("mod/core/core").Montage,
     Criteria = require("mod/core/criteria").Criteria,
     ObjectDescriptor = require("mod/core/meta/object-descriptor").ObjectDescriptor,
     RawEmbeddedValueToObjectConverter = require("mod/data/converter/raw-embedded-value-to-object-converter").RawEmbeddedValueToObjectConverter,
@@ -21,13 +21,13 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     SQLJoinStatements = require("./s-q-l-join-statements").SQLJoinStatements,
     SyntaxInOrderIterator = require("mod/core/frb/syntax-iterator").SyntaxInOrderIterator,
 
+    ObjectStoreDescriptor = require("mod/data/model/object-store.mjson").montageObject,
 
     DataOperation = require("mod/data/service/data-operation").DataOperation,
     DataOperationErrorNames = require("mod/data/service/data-operation").DataOperationErrorNames,
     DataOperationType = require("mod/data/service/data-operation").DataOperationType,
     //PGClass = (require)("../model/p-g-class").PGClass,
 
-    fromIni,
     RDSDataClient,
     BatchExecuteStatementCommand,
     BeginTransactionCommand,
@@ -130,6 +130,23 @@ var createTableTemplatePrefix = `CREATE TABLE :schema.":table"
 */
 const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService extends RawDataService {/** @lends PostgreSQLService */
 
+    static {
+
+        Montage.defineProperties(this.prototype, {
+            /**
+             * If true, a PostgreSQLService will automatically create a storage for an ObjectDescriptor if it's missing and causes a data operation to fail.
+             * For a read, it will then return an empty array. If this happens in a transaction, it will have to re-try the transaction
+             * after the table has been created.
+             * 
+             * @property {boolean} value
+             * @default true
+             */
+            createsStorageForObjectDescriptorAsNeeded: { value: true}
+        });
+    }
+
+
+    
     constructor() {
         super();
 
@@ -286,13 +303,19 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 this.clientPool = value;
             }
 
+            
+            if (typeof (value = deserializer.getProperty("createsStorageForObjectDescriptorAsNeeded")) === "boolean") {
+                this.createsStorageForObjectDescriptorAsNeeded = value;
+            }
+
+        
         }
     },
 
 
      //We need a mapping to go from model(schema?)/ObjectDescriptor to schema/table
-     mapOperationToRawOperationConnection: {
-        value: function (operation, rawDataOperation) {
+     mapConnectionToRawDataOperation: {
+        value: function (rawDataOperation) {
             //Use the stage from the operation:
             //Object.assign(rawDataOperation,this.connectionForIdentifier(operation.context.requestContext.stage));
             Object.assign(rawDataOperation,this.connection);
@@ -1062,6 +1085,57 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
     },
 
 
+
+    mapRawDataOperationErrorToDataOperation: {
+        value: function (rawDataOperation, error, dataOperation) {
+            let doesNotExist = error.message.contains(" does not exist")
+                databaseError = error.message.contains("database "),
+                tableError = error.message.contains("relation ");
+
+            if(error.code ==='42P01' || (doesNotExist && tableError)) {
+                /*
+                    err.message === 'relation "mod_plum_v1.WebSocketSession" does not exist'
+                */
+                error.name = DataOperationErrorNames.ObjectDescriptorStoreMissing;
+
+                let objectDescriptor;
+
+                if(dataOperation.type.contains("Transaction")) {
+                    let message = error.message,
+                        objectDescriptorName = message.substring(message.indexOf(rawDataOperation.schema) + rawDataOperation.schema.length + 1, message.indexOf('" does not exist')),
+                        //We could use dataOperation.data.operations if it's there to validate objectDescriptorName, but we built it in the first place
+                        operationsByObjectDescriptorModuleIds = dataOperation.data.operations,
+                        dataOperationModuleIds = Object.keys(operationsByObjectDescriptorModuleIds),
+                        i, countI, iDataOperationModuleId, iDataOperationsByType, iDataOperationsTypes;
+
+                    for(i=0, countI = dataOperationModuleIds.length; (i<countI); i++) {
+                        iDataOperationModuleId = dataOperationModuleIds[i];
+                        iDataOperationsByType = operationsByObjectDescriptorModuleIds[iDataOperationModuleId];
+                        iDataOperationsTypes = Object.keys(iDataOperationsByType);
+                        for(let j=0, countJ = iDataOperationsTypes.length, jOperations; (j<countJ); j++) {
+                            jOperations = iDataOperationsByType[iDataOperationsTypes[j]];
+                            for(let k=0, countK = jOperations.length; (k < countK); k++) {
+                                if(jOperations[k].target.name === objectDescriptorName) {
+                                    objectDescriptor = jOperations[k].target;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    objectDescriptor = dataOperation.target;
+                }
+
+                error.objectDescriptor = objectDescriptor;
+            }
+            else if(doesNotExist && databaseError) {
+                error.name = DataOperationErrorNames.DatabaseMissing;
+            }
+            return error;
+        }
+    },
+
+
     mapReadOperationToRawReadOperation: {
 
         value: function mapReadOperationToRawReadOperation(readOperation, rawDataOperation) {
@@ -1075,7 +1149,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
 
             //This adds the right access key, schema, db name. etc... to the RawOperation.
-            this.mapOperationToRawOperationConnection(readOperation, rawDataOperation);
+            this.mapConnectionToRawDataOperation(rawDataOperation);
 
 
             var data = readOperation.data,
@@ -1772,7 +1846,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 return;
             }
 
-            this.performReadOperation(readOperation);
+            return this.performReadOperation(readOperation);
         }
     },
 
@@ -1786,7 +1860,19 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 readOperationExecutedCount = 0,
                 readOperations,
                 firstPromise,
-                readOperationsCount;
+                readOperationsCount,
+                readOperationCompletionPromiseResolvers,
+                readOperationCompletionPromise, readOperationCompletionPromiseResolve, readOperationCompletionPromiseReject;
+
+
+            if(this.promisesReadOperationCompletion) {
+                readOperationCompletionPromiseResolvers = Promise.withResolvers();
+                readOperationCompletionPromise = readOperationCompletionPromiseResolvers.promise;
+                readOperationCompletionPromiseResolve = readOperationCompletionPromiseResolvers.resolve;
+                readOperationCompletionPromiseReject = readOperationCompletionPromiseResolvers.reject;
+            } else {
+                readOperationCompletionPromise = readOperationCompletionPromiseResolve = readOperationCompletionromiseReject = undefined;
+            }
 
             if(readOperation.rawDataOperation) {
                 rawDataOperation = readOperation.rawDataOperation;
@@ -1803,7 +1889,11 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 */
                     errorOperation.target = objectDescriptor;
                 objectDescriptor.dispatchEvent(errorOperation);
-                return;
+
+                //Resolve once dispatchEvent() is completed, including any pending progagationPromise.
+                errorOperation.propagationPromise.then(() => {
+                    readOperationCompletionPromiseResolve?.(errorOperation);
+                });
             }
 
             readOperationsCount = readOperations?.length || 0;
@@ -1827,38 +1917,52 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
                         isNotLast = (readOperationsCount - readOperationExecutedCount + 1/*the current/main one*/) > 0;
 
-
                         if(err) {
-                            console.error("handleReadOperation Error: readOperation:",readOperation, "rawDataOperation: ",rawDataOperation, "error: ",err);
+                            // console.error("handleReadOperation Error: readOperation:",readOperation, "rawDataOperation: ",rawDataOperation, "error: ",err);
+                            //self.mapErrorToDataOperationErrorName(err);
+                            self.mapRawDataOperationErrorToDataOperation(rawDataOperation, err, readOperation);
 
-                            if(err.name === "BadRequestException") {
+                            if(err.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
+                                let objectDescriptor = err.objectDescriptor;
+                                self.createTableForObjectDescriptor(objectDescriptor)
+                                .then((result) => {
+                                    let operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, [], false);
+                                    /*
+                                        If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
+                                    */
+                                    operation.target = objectDescriptor;
+                                    resolve(operation);
+                                })
+                                .catch((error) => {
+                                    console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
+                                    reject(error);
+                                });
+    
+                            }
 
-                                if(err.message.startsWith("ERROR: relation ")
-                                && (err.message.indexOf(" does not exist") !== -1)) {
-                                    err.name = DataOperationErrorNames.ObjectStoreMissing;
-                                }
-
-                                if(readOperation.criteria && readOperation.criteria.expression) {
-                                    console.log("------------------> readOperation.criteria.expression:",readOperation.criteria.expression);
-                                    console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
-                                }
+                            if(readOperation.criteria && readOperation.criteria.expression) {
+                                console.log("------------------> readOperation.criteria.expression:",readOperation.criteria.expression);
+                                console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
                             }
                         }
 
 
-                        /*
-                            If the readOperation has a referrer, it's a readOperation created by us to fetch an object's property, so we're going to use that.
-                        */
-
-                        var operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, (data && (data.rows || data.records)), isNotLast);
-                        /*
-                            If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
-                        */
-                        operation.target = objectDescriptor;
-                        //objectDescriptor.dispatchEvent(operation);
                         if(err) {
-                            reject(operation);
+                            // reject(operation);
+                            reject(err);
                         } else {
+
+                            /*
+                                If the readOperation has a referrer, it's a readOperation created by us to fetch an object's property, so we're going to use that.
+                            */
+
+                            var operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, (data && (data.rows || data.records)), isNotLast);
+                            /*
+                                If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
+                            */
+                            operation.target = objectDescriptor;
+                            //objectDescriptor.dispatchEvent(operation);
+
                             resolve(operation);
                         }
 
@@ -1867,7 +1971,6 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                         // let operation = this.responseOperationForReadOperation(readOperation, error, null, false/*isNotLast*/);
                         // readOperation.target.dispatchEvent(operation);
                         reject(error);
-
                     })
                 } else {
                     readOperationExecutedCount++;
@@ -1912,6 +2015,12 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
                     firstReadUpdateOperation.type = DataOperation.Type.ReadUpdateOperation;
                     objectDescriptor.dispatchEvent(firstReadUpdateOperation);
+
+                    //Resolve once dispatchEvent() is completed, including any pending progagationPromise.
+                    firstReadUpdateOperation.propagationPromise.then(() => {
+                        readOperationCompletionPromiseResolve?.(firstReadUpdateOperation);
+                    });
+
                 }
                 /*
                     Only if we're a root readOperation, we dispatch the result, otherwise it's handled within the logic of the root to orchestrate readUpdate/ReadCompletedOperation
@@ -1919,13 +2028,34 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 else if(!readOperation.referrer) {
                     firstReadUpdateOperation.type = DataOperation.Type.ReadCompletedOperation;
                     objectDescriptor.dispatchEvent(firstReadUpdateOperation);
+
+                    //Resolve once dispatchEvent() is completed, including any pending progagationPromise.
+                    firstReadUpdateOperation.propagationPromise.then(() => {
+                        readOperationCompletionPromiseResolve?.(firstReadUpdateOperation);
+                    });
+                    
                 }
                 return firstReadUpdateOperation;
             }, function(error) {
-                let operation = self.responseOperationForReadOperation(readOperation, error, null, false/*isNotLast*/);
+
+                if(error.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
+                    //Create the missing table and resolve as a fetch with 0 result
+
+                }
+
+                let isNotLast = (readOperationsCount - readOperationExecutedCount + 1/*the current/main one*/) > 0;
+
+                let operation = self.responseOperationForReadOperation(readOperation, error, null, isNotLast/*isNotLast*/);
                 readOperation.target.dispatchEvent(operation);
+
+                //Resolve once dispatchEvent() is completed, including any pending progagationPromise.
+                operation.propagationPromise.then(() => {
+                    readOperationCompletionPromiseResolve?.(operation);
+                })
+
             });
 
+            return readOperationCompletionPromise;
             //});
             //}
         }
@@ -2617,7 +2747,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 objectDescriptor = createOperation.target;
 
             //This adds the right access key, db name. etc... to the RawOperation.
-            this.mapOperationToRawOperationConnection(createOperation, rawDataOperation);
+            this.mapConnectionToRawDataOperation(rawDataOperation);
 
 
             var self = this,
@@ -2911,6 +3041,30 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                                     }
                                 }
                             } else {
+                                //Let's try to see if the raw property value of that record is mapped to another property for which we have data, 
+                                let rawProperty = iObjectRuleSourcePathSyntax.args[iPropertyDescriptorRawProperties[j]].args.filter((value => {
+                                    return value.type === "literal";
+                                }))[0].value;
+
+                                if(rawProperty) {
+                                    let mappingRulesForRawDataProperty = mapping.mappingRulesForRawDataProperty(rawProperty);
+                                    if(mappingRulesForRawDataProperty?.length) {
+                                        let r=0, rRule, noColumnNeeded = false;
+                                        while ((rRule = mappingRulesForRawDataProperty[r++])) {
+                                            if(rRule.sourcePath === rawProperty && iObjectRule.converter) {
+                                                /*
+                                                    That property in the record matches a property on the rawData side, so it's likely a construction
+                                                    to get convert that record to a foreign key.
+                                                */
+                                                    noColumnNeeded = true;
+                                                    break;
+                                            }
+                                        }
+
+                                        if(noColumnNeeded) continue;
+                                    }
+                                }
+
                                 throw "Implementation missing for dynamically discovering the column type of raw property ' "+iPropertyDescriptorRawProperties[j]+"' in mapping of property '"+iPropertyDescriptor.name+"' of ObjectDescriptor '"+objectDescriptor.name+"'";
                             }
 
@@ -3046,7 +3200,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
     CREATE UNIQUE INDEX "${tableName}_id_idx" ON "${schemaName}"."${tableName}" (id);
     `;
 
-                this.mapOperationToRawOperationConnection(dataOperation, rawDataOperation);
+                this.mapConnectionToRawDataOperation(rawDataOperation);
 
                 for (i = propertyDescriptors.length - 1; (i > -1); i--) {
                     iPropertyDescriptor = propertyDescriptors[i];
@@ -3176,7 +3330,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 // CREATE UNIQUE INDEX "${tableName}_id_idx" ON "${schemaName}"."${tableName}" (id);
 // `;
 
-//             this.mapOperationToRawOperationConnection(dataOperation, rawDataOperation);
+//             this.mapConnectionToRawDataOperation(rawDataOperation);
 
 //             // parameters.push({
 //             //   name:"schema",
@@ -3344,8 +3498,8 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: new Map()
     },
 
-    createSchemaForCreateObjectDescriptorOperation: {
-        value: function (dataOperation) {
+    createSchema: {
+        value: function () {
             var self = this,
                 databaseName = this.connection.database,
                 schemaName = this.connection.schema,
@@ -3372,7 +3526,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     ${resolvedValues[2].format(schemaName)}
                     ${resolvedValues[3].format(schemaName)}`;
 
-                    self.mapOperationToRawOperationConnection(dataOperation, rawDataOperation);
+                    self.mapConnectionToRawDataOperation(rawDataOperation);
                     rawDataOperation.sql = sql;
 
                     return new Promise(function(resolve, reject) {
@@ -3415,7 +3569,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
 
 
-                this.mapOperationToRawOperationConnection(dataOperation, rawDataOperation);
+                this.mapConnectionToRawDataOperation(rawDataOperation);
                 rawDataOperation.sql = checkIfSchemaExistStatement;
                 verifySchemaPromise = new Promise(function(resolve, reject) {
                     self.performRawDataOperation(rawDataOperation, function (err, data) {
@@ -3431,7 +3585,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                                 hasSchema = (result.length === 1);
 
                             if(!hasSchema) {
-                                self.createSchemaForCreateObjectDescriptorOperation(dataOperation)
+                                self.createSchema()
                                 .then(() => {
                                     resolve(true);
                                 })
@@ -3472,34 +3626,89 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         value: function (createOperation) {
             var self = this;
 
-            this.mapToRawCreateObjectDescriptorOperation(createOperation)
-            .then((rawDataOperation) => {
-                //console.log("rawDataOperation: ",rawDataOperation);
-                self.performRawDataOperation(rawDataOperation, function (err, data) {
-                    var operation = new DataOperation();
-                    operation.target = createOperation.target;
-                    operation.referrerId = createOperation.id;
-                    operation.clientId = createOperation.clientId;
+            var operation = new DataOperation();
 
-                    if (err) {
-                        // an error occurred
-                        console.log(err, err.stack, rawDataOperation);
-                        operation.type = DataOperation.Type.CreateFailedOperation;
-                        //Should the data be the error?
-                        operation.data = err;
-                    }
-                    else {
-                        // successful response
-                        //console.log(data);
-                        operation.type = DataOperation.Type.CreateCompletedOperation;
-                        //Not sure there's much we can provide as data?
-                        operation.data = operation;
-                    }
+            operation.target = createOperation.target;
+            operation.referrerId = createOperation.id;
+            operation.clientId = createOperation.clientId;
 
-                    operation.target.dispatchEvent(operation);
-
-                }, createOperation);
+            this.createObjectDescriptorTableForCreateOperation(createOperation)
+            .then((data)=> {
+                // successful response
+                //console.log(data);
+                operation.type = DataOperation.Type.CreateCompletedOperation;
+                //Not sure there's much we can provide as data?
+                operation.data = operation;
+            })
+            .catch((error) => {
+                // an error occurred
+                console.log(error, error.stack, rawDataOperation);
+                operation.type = DataOperation.Type.CreateFailedOperation;
+                //Should the data be the error?
+                operation.data = error;
+            })
+            .finally(() => {
+                operation.target.dispatchEvent(operation);
             });
+
+            // return this.mapToRawCreateObjectDescriptorOperation(createOperation)
+            // .then((rawDataOperation) => {
+            //     //console.log("rawDataOperation: ",rawDataOperation);
+            //     self.performRawDataOperation(rawDataOperation, function (err, data) {
+            //         var operation = new DataOperation();
+            //         operation.target = createOperation.target;
+            //         operation.referrerId = createOperation.id;
+            //         operation.clientId = createOperation.clientId;
+
+            //         if (err) {
+            //             // an error occurred
+            //             console.log(err, err.stack, rawDataOperation);
+            //             operation.type = DataOperation.Type.CreateFailedOperation;
+            //             //Should the data be the error?
+            //             operation.data = err;
+            //         }
+            //         else {
+            //             // successful response
+            //             //console.log(data);
+            //             operation.type = DataOperation.Type.CreateCompletedOperation;
+            //             //Not sure there's much we can provide as data?
+            //             operation.data = operation;
+            //         }
+
+            //         operation.target.dispatchEvent(operation);
+
+            //     }, createOperation);
+            // });
+        }
+    },
+
+    createTableForObjectDescriptor: {
+        value: function(objectDescriptor) {
+            //Inherited from DataService
+            var createOperation = this.createObjectStoreOperationForObjectDescriptor(objectDescriptor);
+            return this.createObjectDescriptorTableForCreateOperation(createOperation);
+        }
+    },
+
+    createObjectDescriptorTableForCreateOperation: {
+        value: function(createOperation) {
+            return this.mapToRawCreateObjectDescriptorOperation(createOperation)
+            .then((rawDataOperation) => {
+
+                return new Promise((resolve, reject) => {
+                    //console.log("rawDataOperation: ",rawDataOperation);
+                    this.performRawDataOperation(rawDataOperation, function (err, data) {
+
+                        err
+                        ? reject(err)
+                        : resolve(data);
+
+                    }, createOperation);
+
+                });
+
+            });
+
         }
     },
 
@@ -3588,11 +3797,13 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
     /**
      * Handles the mapping of a create operation to SQL.
+     * 
+     * https://www.dbvis.com/thetable/postgresql-upsert-insert-on-conflict-guide/
      *
      * @method
      * @argument  {DataOperation} dataOperation - The dataOperation to map to sql
      * @argument  {DataOperation} record - The object where mapping is done
-  `  * @returns   {Steing} - The SQL to perform that operation
+  `  * @returns   {String} - The SQL to perform that operation
      * @private
      */
 
@@ -3626,6 +3837,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 }
 
                 var objectDescriptor = createOperation.target,
+                    uniquePropertyDescriptors = objectDescriptor.uniquePropertyDescriptors,
                     rawDataDescriptor = self.rawDataDescriptorForObjectDescriptor(objectDescriptor),
                     tableName = self.tableForObjectDescriptor(objectDescriptor),
                     schemaName = rawDataOperation.schema,
@@ -3634,7 +3846,9 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     recordKeysValues = Array(recordKeys.length),
                     mapping = objectDescriptor && self.mappingForType(objectDescriptor),
                     // sqlColumns = recordKeys.join(","),
-                    i, countI, iKey, iValue, iMappedValue, iRule, iPropertyName, iPropertyDescriptor, iRawType,
+                    i, countI, iKey, iValue, iMappedValue, iRule, iPropertyName, iPropertyDescriptor, iRawType, isPrimaryKey,
+                    uniqueKeys,
+                    escapedPrimaryKeys = [],
                     rawDataPrimaryKeys = mapping.rawDataPrimaryKeys,
                     sql;
 
@@ -3664,6 +3878,18 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
                     } else {
                         iRawType = self.mapObjectDescriptorRawPropertyToRawType(objectDescriptor, iKey, mapping, iPropertyDescriptor);
+                    }
+
+                    /*
+                        Do we need to ckeck that the value is not null?
+                        Is it needed to have a unique constraint on the column involved?
+                    */
+                    if((isPrimaryKey = rawDataPrimaryKeys.includes(iKey)) || (iPropertyDescriptor && iPropertyDescriptor.isUnique)) {
+                        console.log("Insert Unique key: ", iKey);
+                        (uniqueKeys || (uniqueKeys = [])).push(escapedRecordKeys[i]);
+                        if(isPrimaryKey) {
+                            escapedPrimaryKeys.push(escapedRecordKeys[i]);
+                        }
                     }
 
                     //In that case we need to produce json to be stored in jsonb
@@ -3710,16 +3936,40 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     recordKeysValues[i] = iMappedValue;
                 }
 
-                /*
-                    INSERT INTO table (column1, column2, …)
-                    VALUES
-                    (value1, value2, …),
-                    (value1, value2, …) ,...;
-                */
+                if(!uniqueKeys) {
+                    /*
+                        INSERT INTO table (column1, column2, …)
+                        VALUES
+                        (value1, value2, …),
+                        (value1, value2, …) ,...;
+                    */
+                    sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) RETURNING id`;
+                } else {
 
+                    //If there's only a primary key inserted and nothing else...
+                    if(escapedRecordKeys.equals(escapedRecordKeys)) {
+                        sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT(${uniqueKeys.join(",")}) DO NOTHING RETURNING id`;
+                    } else {
+                        let setRecordKeysValues = recordKeysValues.map((value, index) => {
+                            if(escapedPrimaryKeys.contains(value)) {
+                                return "";
+                            } else {
+                                return `${escapedRecordKeys[index]} = ${value}`;
+                            }
+                        });
+                        /*
+                            INSERT INTO table(name, surname, email)
+                            VALUES('John', 'Smith', 'john.smith@example.com')
+                            ON CONFLICT(email)
+                            DO UPDATE SET name = 'John', surname = EXCLUDED.surname;
+                        */
+                            sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT(${uniqueKeys.join(",")}) DO UPDATE SET ${setRecordKeysValues.join(",")} RETURNING id`;
+    
+                    }
 
-                sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) RETURNING id`;
+                }
 
+                console.log("_mapCreateOperationToSQL: sql: "+sql)
                 return sql;
             });
         }
@@ -3751,9 +4001,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
             var data = createOperation.data;
 
-            if (createOperation.data === createOperation.target.module.id) {
-            //if (createOperation.data === createOperation.target._montage_metadata.moduleId.removeSuffix(".mjson")) {
-                    createOperation.data = createOperation.target;
+            if (createOperation.target === ObjectStoreDescriptor) {
                 return this.handleCreateObjectDescriptorOperation(createOperation);
             } else {
                 var referrer = createOperation.referrer;
@@ -3779,7 +4027,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     objectDescriptor = createOperation.target;
 
                     //This adds the right access key, db name. etc... to the RawOperation.
-                    this.mapOperationToRawOperationConnection(createOperation, rawDataOperation);
+                    this.mapConnectionToRawDataOperation(rawDataOperation);
 
 
                     var self = this,
@@ -4075,7 +4323,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                         record = {};
 
                     //This adds the right access key, db name. etc... to the RawOperation.
-                    this.mapOperationToRawOperationConnection(updateOperation, rawDataOperation);
+                    this.mapConnectionToRawDataOperation(rawDataOperation);
 
                     this._mapUpdateOperationToSQL(updateOperation, rawDataOperation, record)
                     .then(function(SQL) {
@@ -4211,7 +4459,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     record = {};
 
                 //This adds the right access key, db name. etc... to the RawOperation.
-                this.mapOperationToRawOperationConnection(deleteOperation, rawDataOperation);
+                this.mapConnectionToRawDataOperation(rawDataOperation);
 
                 rawDataOperation.sql = this._mapDeleteOperationToSQL(deleteOperation, rawDataOperation, record);
                 //console.log(sql);
@@ -4288,7 +4536,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
             //Right now we assume that all ObjectDescriptors in the transaction goes to the same DB
             //If not, it needs to be handled before reaching us with an in-memory transaction,
             //or leveraging some other kind of storage for long-running cases.
-            this.mapOperationToRawOperationConnection(createTransactionOperation, rawDataOperation);
+            this.mapConnectionToRawDataOperation(rawDataOperation);
 
             createTransactionOperation.createCompletionPromiseForParticipant(this);
             // return new Promise(function (resolve, reject) {
@@ -4423,7 +4671,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
     rawDataOperationForOperation: {
         value: function (dataOperation) {
             if(!dataOperation._rawDataOperation) {
-                this.mapOperationToRawOperationConnection(appendTransactionOperation, (dataOperation._rawDataOperation = {}));
+                this.mapConnectionToRawDataOperation((dataOperation._rawDataOperation = {}));
             }
             return dataOperation._rawDataOperation;
         }
@@ -4476,7 +4724,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     operationData = "",
                     executeStatementErrors = [],
                     executeStatementData = [],
-                    iBatchRawDataOperation,
+                    rawTransaction,
                     startIndex,
                     endIndex,
                     lastIndex;
@@ -4499,13 +4747,13 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                                 endIndex = i-1;
                             }
                             //Time to execute what we have before it becomes too big:
-                            iBatchRawDataOperation = {};
-                            Object.assign(iBatchRawDataOperation,rawDataOperation);
+                            rawTransaction = {};
+                            Object.assign(rawTransaction,rawDataOperation);
                             //console.log("iBatch:",iBatch);
-                            iBatchRawDataOperation.sql = iBatch;
+                            rawTransaction.sql = iBatch;
 
                             //Right now _executeBatchStatement will create symetric response operations if we pass responseOperations as an argument. This is implemented by using the data of the original create/update operations to eventually send it back. We can do without that, but we need to re-test that when we do batch of fetches and re-activate it.
-                            batchPromises.push(self._executeBatchStatement(appendTransactionOperation, startIndex, endIndex, batchedOperations, iBatchRawDataOperation, rawOperationRecords, responseOperations));
+                            batchPromises.push(self._executeBatchStatement(appendTransactionOperation, startIndex, endIndex, batchedOperations, rawTransaction, rawOperationRecords, responseOperations));
 
                             //Now we continue:
                             iBatch = iStatement;
@@ -4603,7 +4851,18 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
             for(i=0, countI = objectDescriptorModuleIds.length; (i<countI); i++) {
                 iObjectDescriptorModuleId = objectDescriptorModuleIds[i];
-                iObjectDescriptor = mainService.objectDescriptorWithModuleId(iObjectDescriptorModuleId);
+
+                /*
+                    With PostgreSQL data service nested under a SynchronizationDataService
+                    mainService.objectDescriptorWithModuleId(iObjectDescriptorModuleId) returns undefined,
+                    somehow the PostgreSQL's type don't make it up to mainService. THIS NEEDS TO BE FIXED
+
+                    But, Why should PostgreSQL care about the mainService knowing it if it's not one of his?
+                    I would't be able to do anything with it anyway, which we ensure right bellow with:
+                        if(this.handlesType(iObjectDescriptor)) {...}
+                */
+                //iObjectDescriptor = mainService.objectDescriptorWithModuleId(iObjectDescriptorModuleId);
+                iObjectDescriptor = this.objectDescriptorWithModuleId(iObjectDescriptorModuleId);
 
                 if(!iObjectDescriptor) {
                     console.warn("Could not find an ObjecDescriptor with moduleId "+iObjectDescriptorModuleId);
@@ -4718,10 +4977,10 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 rawDataOperation.transactionId = transactionId;
             }
 
-            // this.mapOperationToRawOperationConnection(appendTransactionOperation, rawDataOperation);
+            // this.mapConnectionToRawDataOperation(rawDataOperation);
 
 
-            this.mapOperationToRawOperationConnection(appendTransactionOperation, rawDataOperation);
+            this.mapConnectionToRawDataOperation(rawDataOperation);
 
 
             /*
@@ -4792,7 +5051,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
             //         executeStatementErrors = [],
             //         executeStatementData = [],
             //         responseOperations = [],
-            //         iBatchRawDataOperation,
+            //         rawTransaction,
             //         startIndex,
             //         endIndex,
             //         lastIndex;
@@ -4816,12 +5075,12 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
             //                     endIndex = i-1;
             //                 }
             //                 //Time to execute what we have before it becomes too big:
-            //                 iBatchRawDataOperation = {};
-            //                 Object.assign(iBatchRawDataOperation,rawDataOperation);
-            //                 iBatchRawDataOperation.sql = iBatch;
+            //                 rawTransaction = {};
+            //                 Object.assign(rawTransaction,rawDataOperation);
+            //                 rawTransaction.sql = iBatch;
 
             //                 //Right now _executeBatchStatement will create symetric response operations if we pass responseOperations as an argument. This is implemented by using the data of the original create/update operations to eventually send it back. We can do without that, but we need to re-test that when we do batch of fetches and re-activate it.
-            //                 batchPromises.push(self._executeBatchStatement(appendTransactionOperation, startIndex, endIndex, batchedOperations, iBatchRawDataOperation, rawOperationRecords, responseOperations));
+            //                 batchPromises.push(self._executeBatchStatement(appendTransactionOperation, startIndex, endIndex, batchedOperations, rawTransaction, rawOperationRecords, responseOperations));
 
             //                 //Now we continue:
             //                 iBatch = iStatement;
@@ -4932,11 +5191,11 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 return;
             }
 
-            this.mapOperationToRawOperationConnection(transactionEndOperation, rawDataOperation);
+            this.mapConnectionToRawDataOperation(rawDataOperation);
 
             //_rdsDataClient.commitTransaction & _rdsDataClient.rollbackTransaction make sure the param
             //don't have a database nor schema field, so we delete it.
-            //TODO, try to find a way to instruct this.mapOperationToRawOperationConnection not to put them in if we don't want them
+            //TODO, try to find a way to instruct this.mapConnectionToRawDataOperation not to put them in if we don't want them
             delete rawDataOperation.database;
             delete rawDataOperation.schema;
 
@@ -5020,7 +5279,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                 batchedOperations = commitTransactionOperation.data.operations,
                 responseOperations = [];
 
-                this.mapOperationToRawOperationConnection(commitTransactionOperation, rawDataOperation);
+                this.mapConnectionToRawDataOperation(rawDataOperation);
 
                 self.beginTransaction(rawDataOperation, function (err, data) {
                     var operation = new DataOperation();
@@ -5068,13 +5327,200 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         }
     },
 
+    rollbackRawTransactionWithClientForDataOperation: {
+        value: function (client, transactionOperation) {
+            return new Promise((resolve, reject) => {
+
+                client.query('ROLLBACK', err => {
+                    if (err) {
+                        console.error('Error rolling back client', err.stack);
+                        reject(err);
+                        // operation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                        //     ? DataOperation.Type.CommitTransactionFailedOperation 
+                        //     : DataOperation.Type.PerformTransactionFailedOperation;
+                        // operation.data = err;
+                        // operation.target.dispatchEvent(operation);
+                        // // // release the client back to the pool
+                        // // done();
+                    } else {
+                        resolve(true);
+                    }
+                });
+
+            });
+        }
+    },
+
+    beginRawTransactionWithClient: {
+        value: function (client) {
+            return new Promise((resolve, reject) => {
+                client.query('BEGIN', (err, res) => {
+                    if(err) {
+                        reject(err);
+                    } else {
+                        resolve(res);
+                    }
+                });
+            });
+        }
+    },
+
+    sendRawTransactionSqlWithClient: {
+        value: function (rawTransactionSql, client) {
+            return new Promise((resolve, reject) => {
+                client.query(rawTransactionSql, undefined, (err, res) => {
+                    if(err) {
+                        reject(err);
+                    } else {
+                        resolve(res);
+                    }
+                });
+            });
+        }
+    },
+
+    commitRawTransactionWithClient: {
+        value: function (client) {
+            return new Promise((resolve, reject) => {
+                client.query('COMMIT', (err, res) => {
+                    if(err) {
+                        reject(err);
+                    } else {
+                        resolve(res);
+                    }
+                });
+            });
+        }
+    },
+
+    _tryPerformRawTransactionForDataOperationWithClient: {
+        value: function (rawTransaction, transactionOperation, client, done, responseOperation) {
+            let shouldRetry = false; 
+
+            if(ProcessEnv.TIME_PG === "true") {
+                var queryTimer = new Timer(`${transactionOperation.id}-${transactionOperation.type}`);
+            }
+
+            this.beginRawTransactionWithClient(client)
+            .then((resul) => {
+                return this.sendRawTransactionSqlWithClient(rawTransaction.sql, client);
+            })
+            .then((resul) => {
+                return this.commitRawTransactionWithClient(client);
+            })
+            .then((resul) => {
+
+                if(ProcessEnv.TIME_PG === "true") {
+                    console.debug(queryTimer.runtimeMsStr());
+                }
+
+                responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                    ? DataOperation.Type.CommitTransactionCompletedOperation 
+                    : DataOperation.Type.PerformTransactionCompletedOperation
+                // responseOperation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionCompletedOperation: DataOperation.Type.PerformTransactionCompletedOperation;
+                
+                //Not sure what we could return here.
+                responseOperation.data = true;
+
+                // release the client back to the pool
+                done();
+
+                responseOperation.target.dispatchEvent(responseOperation);
+            })
+            .catch((error) => {
+
+                if(ProcessEnv.TIME_PG === "true") {
+                    console.debug(queryTimer.runtimeMsStr());
+                }
+
+                this.mapRawDataOperationErrorToDataOperation(rawTransaction, error, transactionOperation);
+                this.rollbackRawTransactionWithClientForDataOperation(client, transactionOperation);
+                if(error.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
+                    let objectDescriptor = error.objectDescriptor;
+                    this.createTableForObjectDescriptor(objectDescriptor)
+                    .then((result) => {
+                        this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
+                    })
+                    .catch((error) => {
+                        shouldRetry = false;
+                        console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
+
+                        //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
+                        responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                        ? DataOperation.Type.CommitTransactionFailedOperation 
+                        : DataOperation.Type.PerformTransactionFailedOperation
+                        responseOperation.data = error;
+
+                        // release the client back to the pool
+                        done();
+
+                        responseOperation.target.dispatchEvent(responseOperation);
+
+                    });
+
+                } else {
+                    shouldRetry = false;
+
+                    console.error('Error committing transaction', error.stack)
+                    //responseOperation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation: DataOperation.Type.PerformTransactionFailedOperation;
+                    
+                    responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                    ? DataOperation.Type.CommitTransactionFailedOperation 
+                    : DataOperation.Type.PerformTransactionFailedOperation
+                    responseOperation.data = error;
+
+                    // release the client back to the pool
+                    done();
+
+                    responseOperation.target.dispatchEvent(responseOperation);
+                }
+
+            });
+        }
+    },
+
+    performRawTransactionForDataOperation: {
+        value: function (rawTransaction, transactionOperation, responseOperation) {
+
+            // callback - checkout a client
+            this.clientPool.connectForDataOperation(transactionOperation,(err, client, done) => {
+                
+                /*
+                    If connection fails, there's not much more we can do, we report the error 
+                */
+                if (err) {
+                    // responseOperation.type = DataOperation.Type.PerformTransactionFailedOperation;
+                    responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                            ? DataOperation.Type.CommitTransactionFailedOperation 
+                            : DataOperation.Type.PerformTransactionFailedOperation
+                            responseOperation.data = err;
+                            responseOperation.target.dispatchEvent(responseOperation);
+
+                    // release the client back to the pool
+                    done();
+                    return responseOperation;
+                }
+
+                /*
+                    Now we're going to handle errors that are caused by tables missing, create them
+                    and try again. If it's something else, it's over.
+                */
+
+
+                this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
+
+            });
+
+        }
+    },
+
     /*
         To get to this ASAP, we're going to pass a flag for now
         When we have properly added the PerformTransactionOperation flow as a full-class citizen
         in the design, we won't need it anymore, the event manager doesn't dispatch a second argument anyway so it will be undefined.
     */
     handlePerformTransactionOperation: {
-        value: function (performTransactionOperation, _actAsHandleCommitTransactionOperation) {
+        value: function (performTransactionOperation) {
             // console.debug("handlePerformTransactionOperation: ",performTransactionOperation, _actAsHandleCommitTransactionOperation);
 
             /*
@@ -5112,7 +5558,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
 
 
-                this.mapOperationToRawOperationConnection(performTransactionOperation, rawDataOperation);
+                this.mapConnectionToRawDataOperation(rawDataOperation);
 
 
                 var self = this,
@@ -5166,7 +5612,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                         operationData = "",
                         executeStatementErrors = [],
                         executeStatementData = [],
-                        iBatchRawDataOperation,
+                        rawTransaction,
                         startIndex,
                         endIndex,
                         lastIndex;
@@ -5199,10 +5645,10 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                                     endIndex = i-1;
                                 }
                                 //Time to execute what we have before it becomes too big:
-                                iBatchRawDataOperation = {};
-                                Object.assign(iBatchRawDataOperation,rawDataOperation);
+                                rawTransaction = {};
+                                Object.assign(rawTransaction,rawDataOperation);
                                 //console.log("iBatch:",iBatch);
-                                iBatchRawDataOperation.sql = iBatch;
+                                rawTransaction.sql = iBatch;
 
                                 //Right now _executeBatchStatement will create symetric response operations if we pass responseOperations as an argument. This is implemented by using the data of the original create/update operations to eventually send it back. We can do without that, but we need to re-test that when we do batch of fetches and re-activate it.
                                 //Now we continue:
@@ -5216,74 +5662,16 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                             }
                         }
 
+                        return rawTransaction;
+                    })
+                    .then((rawTransaction) => {
 
-
-                        // callback - checkout a client
-                        self.clientPool.connectForDataOperation(performTransactionOperation,(err, client, done) => {
-                            if (err) {
-                                operation.type = DataOperation.Type.PerformTransactionFailedOperation;
-                                operation.data = err;
-                                operation.target.dispatchEvent(operation);
-                                return operation;
-                            }
-
-                            const shouldAbort = err => {
-                                if (err) {
-                                  console.error('Error in transaction', err.stack)
-                                  client.query('ROLLBACK', err => {
-                                    if (err) {
-                                      console.error('Error rolling back client', err.stack)
-                                      operation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation: DataOperation.Type.PerformTransactionFailedOperation;
-                                      operation.data = err;
-                                      operation.target.dispatchEvent(operation);
-                                    }
-                                    // release the client back to the pool
-                                    done()
-                                  })
-                                }
-                                return !!err
-                              }
-
-                            if(ProcessEnv.TIME_PG === "true") {
-                                //var queryTimer = new Timer(iBatchRawDataOperation.sql);
-                                var queryTimer = new Timer(`${performTransactionOperation.id}-${performTransactionOperation.type}`);
-                            }
-                            client.query('BEGIN', (err, res) => {
-
-                                if (shouldAbort(err)) return
-                                //const queryText = 'INSERT INTO users(name) VALUES($1) RETURNING id'
-                                client.query(iBatchRawDataOperation.sql, undefined, (err, res) => {
-                                    if (shouldAbort(err)) return
-                                    client.query('COMMIT', (err, res) => {
-
-                                        if(ProcessEnv.TIME_PG === "true") {
-                                            console.debug(queryTimer.runtimeMsStr());
-                                        }
-
-                                        if (err) {
-                                            console.error('Error committing transaction', err.stack)
-                                            operation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation: DataOperation.Type.PerformTransactionFailedOperation;
-                                            operation.data = err;
-                                            operation.target.dispatchEvent(operation);
-                                            return operation;
-                                        } else {
-                                            operation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionCompletedOperation: DataOperation.Type.PerformTransactionCompletedOperation;
-                                            //Not sure what we could return here.
-                                            operation.data = true;
-                                            operation.target.dispatchEvent(operation);
-                                        }
-                                        done()
-                                    })
-                                })
-                            })
-                        });
-
-
-
+                        this.performRawTransactionForDataOperation(rawTransaction, performTransactionOperation, operation);
+                    
                     })
                     .catch(function (error) {
                         operation.type = DataOperation.Type.PerformTransactionFailedOperation;
-                        operation.data = err;
+                        operation.data = error;
                         operation.target.dispatchEvent(operation);
                         return operation;
                     });
@@ -5368,7 +5756,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                             if(err.message.includes("already exists") && dataOperation.type === DataOperation.Type.CreateOperation && params.sql.startsWith("CREATE TABLE")) {
                                 callback(null, res);
                             } else {
-                                console.error("sendDirectStatement() client.query error: ",err);
+                                //console.error("sendDirectStatement() client.query error: ",err);
                                 callback(err);    
                             }
                         } else {
