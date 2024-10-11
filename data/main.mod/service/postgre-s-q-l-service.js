@@ -518,11 +518,6 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
     //     }
     // },
 
-    connectionIdentifer: {
-        value: undefined
-    },
-
-
     connection: {
         get: function() {
             if(!this._connection) {
@@ -535,11 +530,11 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
                     -> https://www.stackovercloud.com/2020/06/30/amazon-rds-proxy-now-generally-available/
                 */
 
-                //If we have an connectionIdentifer, we go for it, otherwise we go for a stage-based logic
-                if(this.connectionIdentifer) {
-                    this.connection = this.connectionForIdentifier(this.connectionIdentifer);
+                //If we have an connectionIdentifier, we go for it, otherwise we go for a stage-based logic
+                if(this.connectionIdentifier) {
+                    this.connection = this.connectionForIdentifier(this.connectionIdentifier);
                 }
-                else if(!this.currentEnvironment.isAWS) {
+                else if(!this.currentEnvironment.isCloud) {
                     this.connection = this.connectionForIdentifier(`local-${this.currentEnvironment.stage}`);
                 } else {
                     this.connection = this.connectionForIdentifier(this.currentEnvironment.stage);
@@ -1924,9 +1919,9 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
                             if(err.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
                                 let objectDescriptor = err.objectDescriptor;
-                                self.createTableForObjectDescriptor(objectDescriptor)
+                                return self.createTableForObjectDescriptor(objectDescriptor)
                                 .then((result) => {
-                                    let operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, [], false);
+                                    let operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], false);
                                     /*
                                         If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                                     */
@@ -3631,19 +3626,19 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
             operation.target = createOperation.target;
             operation.referrerId = createOperation.id;
             operation.clientId = createOperation.clientId;
+            operation.rawDataService = this;
 
             this.createObjectDescriptorTableForCreateOperation(createOperation)
             .then((data)=> {
                 // successful response
-                //console.log(data);
                 operation.type = DataOperation.Type.CreateCompletedOperation;
-                //Not sure there's much we can provide as data?
-                operation.data = operation;
+                operation.data = createOperation.data;
             })
             .catch((error) => {
                 // an error occurred
                 console.log(error, error.stack, rawDataOperation);
                 operation.type = DataOperation.Type.CreateFailedOperation;
+                error.objectDescriptor = createOperation.data;
                 //Should the data be the error?
                 operation.data = error;
             })
@@ -5678,6 +5673,20 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
 
 
             })
+            .catch(function (error) {
+                error.message = "rawClientPromise failed: "+error.message;
+                console.error(error);
+                var operation = new DataOperation();
+                operation.referrerId = performTransactionOperation.id;
+                operation.target = performTransactionOperation.target;
+                //Carry on the details needed by the coordinator to dispatch back to client
+                operation.clientId = performTransactionOperation.clientId;
+                operation.type = DataOperation.Type.PerformTransactionFailedOperation;
+                operation.data = error;
+                operation.target.dispatchEvent(operation);
+                return operation;
+            });
+
         }
     },
 
