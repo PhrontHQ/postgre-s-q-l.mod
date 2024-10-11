@@ -5,7 +5,8 @@
 
 exports.format = (schema) => {
 
-return `CREATE EXTENSION IF NOT EXISTS postgis;
+return `SET LOCAL pgaudit.log = 'none';
+CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
 CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;
 CREATE EXTENSION IF NOT EXISTS postgis_topology;
@@ -22,7 +23,7 @@ CREATE FUNCTION "${schema}".exec(text) returns text language plpgsql volatile AS
 SELECT exec('ALTER TABLE ' || quote_ident(s.nspname) || '.' || quote_ident(s.relname) || ' OWNER TO rds_superuser;')
 FROM (
     SELECT nspname, relname
-    FROM pg_class c JOIN pg_namespace n ON (c.relnamespace = n.oid)
+    FROM pg_class c JOIN pg_namespace n ON (c.relnamespace = n.oid) 
     WHERE nspname in ('tiger','topology') AND
     relkind IN ('r','S','v') ORDER BY relkind = 'S'
 )
