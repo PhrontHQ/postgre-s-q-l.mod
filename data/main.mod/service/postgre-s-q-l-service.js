@@ -244,8 +244,11 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
     //     }
     // },
 
-    PostgreSQLService.addClassProperties({
-
+PostgreSQLService.addClassProperties({
+    canSaveData: {
+        value: true
+    },
+    
     usePerformTransaction: {
         value: true
     },
