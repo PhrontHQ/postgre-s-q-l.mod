@@ -3185,7 +3185,7 @@ PostgreSQLService.addClassProperties({
                     // createExtensionPgcryptoSchema = `CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA "${schemaName}";   `,
                     createTableTemplatePrefix = `CREATE TABLE IF NOT EXISTS "${schemaName}"."${tableName}"
     (
-        id uuid NOT NULL DEFAULT "${schemaName}".gen_random_uuid(),
+        id uuid NOT NULL,
         CONSTRAINT "${tableName}_pkey" PRIMARY KEY (id)`,
                     createTableTemplateSuffix = `
     )
