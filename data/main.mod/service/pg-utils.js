@@ -31,7 +31,7 @@ function escapeElement (elementRepresentation, quoteCharacter) {
 // convert a JS array to a postgres array literal
 // uses comma separator so won't work for types like box that use
 // a different array separator.
-function arrayString (val, type) {
+function arrayString (val, type, depth) {
     var toJSONB = (type === "jsonb"),
         toList = (type === "list"),
         isTypeCastArray = ( type && type.endsWith("[]") && type.length > 2),
@@ -41,6 +41,9 @@ function arrayString (val, type) {
                     ? "("
                     :"'{",
         isUUID = (type === 'uuid[]');
+
+        depth++;
+
     for (var i = 0, countI=val.length, iVal; i < countI; i++) {
         if (i > 0) {
             result += ',';
@@ -49,18 +52,18 @@ function arrayString (val, type) {
         if (iVal === null || typeof iVal === 'undefined') {
             result += 'NULL';
         } else if (Array.isArray(iVal)) {
-            result += arrayString(iVal)
+            result += arrayString(iVal, undefined, depth)
         } else if (iVal instanceof Buffer) {
             result += '\\\\x';
             result += iVal.toString('hex');
         } else {
             if (typeof iVal === 'object' && toJSONB) {
-                result += prepareValue(iVal, type);
+                result += prepareValue(iVal, type, undefined, depth);
             } else {
                 if(isUUID) {
-                    result += prepareValue(iVal);
+                    result += prepareValue(iVal, undefined, undefined, depth);
                 } else {
-                    result += escapeElement(prepareValue(iVal,type), toList ? "'" : '"' );
+                    result += escapeElement(prepareValue(iVal,type, undefined, depth), toList ? "'" : '"' );
                 }
             }
 
@@ -81,7 +84,7 @@ function arrayString (val, type) {
 // to their 'raw' counterparts for use as a postgres parameter
 // note: you can override this function to provide your own conversion mechanism
 // for complex types, etc...
-var prepareValue = function (val, type, seen) {
+var prepareValue = function (val, type, seen, depth = 0) {
     if (val instanceof Buffer) {
         return val
     }
@@ -116,18 +119,18 @@ var prepareValue = function (val, type, seen) {
         }
     }
     if (Array.isArray(val)) {
-        return arrayString(val,type);
+        return arrayString(val,type, ++depth);
     }
     if (val === null || typeof val === 'undefined') {
         return null;
     }
     if (typeof val === 'object') {
-        return prepareObject(val, seen, type);
+        return prepareObject(val, seen, type, ++depth);
     }
     return val.toString();
 }
 
-function prepareObject (val, seen, type) {
+function prepareObject (val, seen, type, depth) {
     if (val && typeof val.toPostgres === 'function') {
         seen = seen || []
         if (seen.indexOf(val) !== -1) {
@@ -135,10 +138,10 @@ function prepareObject (val, seen, type) {
         }
         seen.push(val);
 
-        return prepareValue(val.toPostgres(prepareValue), seen);
+        return prepareValue(val.toPostgres(prepareValue), seen, ++depth);
     }
     if(type === "jsonb") {
-        return  escapeString(JSON.stringify(val), "string");
+        return depth > 0 ? JSON.stringify(val) : escapeString(JSON.stringify(val), "string");
     } else {
         return `'${JSON.stringify(val)}'`;
     }
