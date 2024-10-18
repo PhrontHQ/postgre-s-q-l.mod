@@ -119,13 +119,13 @@ var prepareValue = function (val, type, seen, depth = 0) {
         }
     }
     if (Array.isArray(val)) {
-        return arrayString(val,type, ++depth);
+        return arrayString(val,type, depth++);
     }
     if (val === null || typeof val === 'undefined') {
         return null;
     }
     if (typeof val === 'object') {
-        return prepareObject(val, seen, type, ++depth);
+        return prepareObject(val, seen, type, depth++);
     }
     return val.toString();
 }
