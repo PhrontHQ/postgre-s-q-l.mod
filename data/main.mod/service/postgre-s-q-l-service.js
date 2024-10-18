@@ -3690,25 +3690,44 @@ PostgreSQLService.addClassProperties({
         }
     },
 
+    __createObjectDescriptorTablePromiseByObjectDescriptor: {
+        value: undefined
+    },
+    _createObjectDescriptorTablePromiseByObjectDescriptor: {
+        get: function() {
+            return this.__createObjectDescriptorTablePromiseByObjectDescriptor || (this.__createObjectDescriptorTablePromiseByObjectDescriptor = new Map());
+        }
+    },
+
+
     createObjectDescriptorTableForCreateOperation: {
         value: function(createOperation) {
-            return this.mapToRawCreateObjectDescriptorOperation(createOperation)
-            .then((rawDataOperation) => {
+            let promise = this._createObjectDescriptorTablePromiseByObjectDescriptor.get(createOperation.data);
 
-                return new Promise((resolve, reject) => {
-                    //console.log("rawDataOperation: ",rawDataOperation);
-                    this.performRawDataOperation(rawDataOperation, function (err, data) {
+            if(promise) {
+                return promise;
+            } else {
 
-                        err
-                        ? reject(err)
-                        : resolve(data);
-
-                    }, createOperation);
-
+                promise = this.mapToRawCreateObjectDescriptorOperation(createOperation)
+                .then((rawDataOperation) => {
+    
+                    return new Promise((resolve, reject) => {
+                        //console.log("rawDataOperation: ",rawDataOperation);
+                        this.performRawDataOperation(rawDataOperation, function (err, data) {
+    
+                            err
+                            ? reject(err)
+                            : resolve(data);
+    
+                        }, createOperation);
+    
+                    });
+    
                 });
 
-            });
-
+                this._createObjectDescriptorTablePromiseByObjectDescriptor.set(createOperation.data, promise);
+                return promise;
+            }
         }
     },
 
