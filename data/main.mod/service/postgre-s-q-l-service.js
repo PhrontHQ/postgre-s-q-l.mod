@@ -2797,10 +2797,12 @@ PostgreSQLService.addClassProperties({
 
                 columnsDone.add(columnName);
 
-                var columnSQL = `  ${escapeIdentifier(columnName)} ${columnType}`;
-                if (columnType === 'text') {
-                    columnSQL = `${columnSQL} COLLATE pg_catalog."default"`;
-                }
+                // var columnSQL = `  ${escapeIdentifier(columnName)} ${columnType}`;
+                // if (columnType === 'text') {
+                //     columnSQL = `${columnSQL} COLLATE pg_catalog."default"`;
+                // }
+
+                var columnSQL = `  ${escapeIdentifier(columnName)} ${columnType} ${(columnType === 'text') ? 'COLLATE pg_catalog."default"' : ''}${propertyDescriptor.isUnique ? 'UNIQUE' : ''}`;
 
                 // if (colunmnStrings.length > 0) {
                 //     columnSQL += ',\n';
