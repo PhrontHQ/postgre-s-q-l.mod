@@ -22,6 +22,8 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     SyntaxInOrderIterator = require("mod/core/frb/syntax-iterator").SyntaxInOrderIterator,
 
     ObjectStoreDescriptor = require("mod/data/model/object-store.mjson").montageObject,
+    ObjectPropertyStoreDescriptor = require("mod/data/model/object-property-store.mjson").montageObject,
+
 
     DataOperation = require("mod/data/service/data-operation").DataOperation,
     DataOperationErrorNames = require("mod/data/service/data-operation").DataOperationErrorNames,
@@ -1082,51 +1084,114 @@ PostgreSQLService.addClassProperties({
         }
     },
 
+    _objectDescriptorNameForRawDataOperationErrorExecutingDataOperation: {
+        value: function(rawDataOperation, error, dataOperation) {
+            let message = error.message,
+                objectDescriptorName;
 
+
+            if(error.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
+                objectDescriptorName = message.substring(message.indexOf(rawDataOperation.schema) + rawDataOperation.schema.length + 1, message.indexOf('" does not exist'));
+            } else if(error.name === DataOperationErrorNames.PropertyDescriptorStoreMissing) {
+                let tableNameStartIndex =  error.message.indexOf('relation "') + 10,
+                    tableNameEndIndex =  error.message.indexOf('"',tableNameStartIndex);
+
+                objectDescriptorName = error.message.substring(tableNameStartIndex, tableNameEndIndex);
+            } else {
+                throw "_objectDescriptorNameForRawDataOperationErrorExecutingDataOperation for unkown Error"
+            }
+
+            return objectDescriptorName;
+        }
+    },
+
+    _objectDescriptorForRawDataOperationErrorExecutingDataOperation: {
+        value: function(rawDataOperation, error, dataOperation) {
+            let objectDescriptor;
+
+            if(dataOperation.type.contains("Transaction")) {
+                let objectDescriptorName = this._objectDescriptorNameForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation),
+                    //We could use dataOperation.data.operations if it's there to validate objectDescriptorName, but we built it in the first place
+                    operationsByObjectDescriptorModuleIds = dataOperation.data.operations,
+                    dataOperationModuleIds = Object.keys(operationsByObjectDescriptorModuleIds),
+                    i, countI, iDataOperationModuleId, iDataOperationsByType, iDataOperationsTypes;
+
+                for(i=0, countI = dataOperationModuleIds.length; (i<countI); i++) {
+                    iDataOperationModuleId = dataOperationModuleIds[i];
+                    iDataOperationsByType = operationsByObjectDescriptorModuleIds[iDataOperationModuleId];
+                    iDataOperationsTypes = Object.keys(iDataOperationsByType);
+                    for(let j=0, countJ = iDataOperationsTypes.length, jOperations; (j<countJ); j++) {
+                        jOperations = iDataOperationsByType[iDataOperationsTypes[j]];
+                        for(let k=0, countK = jOperations.length; (k < countK); k++) {
+                            if(jOperations[k].target.name === objectDescriptorName) {
+                                objectDescriptor = jOperations[k].target;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                objectDescriptor = dataOperation.target;
+            }
+
+            return objectDescriptor;
+        }
+    },
 
     mapRawDataOperationErrorToDataOperation: {
         value: function (rawDataOperation, error, dataOperation) {
             let doesNotExist = error.message.contains(" does not exist")
-                databaseError = error.message.contains("database "),
-                tableError = error.message.contains("relation ");
+                isDatabaseError = error.message.contains("database "),
+                isTableError = error.message.contains("relation "),
+                /* error.message === 'column "identityId" of relation "WebSocketSession" does not exist'*/
+                isColumnMissingError = error.message.contains("column ");
 
-            if(error.code ==='42P01' || (doesNotExist && tableError)) {
+            if(error.code ==='42P01' || (doesNotExist && isTableError && !isColumnMissingError)) {
                 /*
                     err.message === 'relation "mod_plum_v1.WebSocketSession" does not exist'
                 */
                 error.name = DataOperationErrorNames.ObjectDescriptorStoreMissing;
 
-                let objectDescriptor;
-
-                if(dataOperation.type.contains("Transaction")) {
-                    let message = error.message,
-                        objectDescriptorName = message.substring(message.indexOf(rawDataOperation.schema) + rawDataOperation.schema.length + 1, message.indexOf('" does not exist')),
-                        //We could use dataOperation.data.operations if it's there to validate objectDescriptorName, but we built it in the first place
-                        operationsByObjectDescriptorModuleIds = dataOperation.data.operations,
-                        dataOperationModuleIds = Object.keys(operationsByObjectDescriptorModuleIds),
-                        i, countI, iDataOperationModuleId, iDataOperationsByType, iDataOperationsTypes;
-
-                    for(i=0, countI = dataOperationModuleIds.length; (i<countI); i++) {
-                        iDataOperationModuleId = dataOperationModuleIds[i];
-                        iDataOperationsByType = operationsByObjectDescriptorModuleIds[iDataOperationModuleId];
-                        iDataOperationsTypes = Object.keys(iDataOperationsByType);
-                        for(let j=0, countJ = iDataOperationsTypes.length, jOperations; (j<countJ); j++) {
-                            jOperations = iDataOperationsByType[iDataOperationsTypes[j]];
-                            for(let k=0, countK = jOperations.length; (k < countK); k++) {
-                                if(jOperations[k].target.name === objectDescriptorName) {
-                                    objectDescriptor = jOperations[k].target;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    objectDescriptor = dataOperation.target;
-                }
-
+                let objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation);
                 error.objectDescriptor = objectDescriptor;
             }
-            else if(doesNotExist && databaseError) {
+            else if(error.code ==='42703' || (doesNotExist && columnMissingError)) {
+                error.name = DataOperationErrorNames.PropertyDescriptorStoreMissing;
+
+                let rawPropertyName,
+                    propertyDescriptor,
+                    objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation),
+                    mapping = this.mappingForType(objectDescriptor);
+                error.objectDescriptor = objectDescriptor;
+
+                /* 
+                    error.message === 'column "identityId" of relation "WebSocketSession" does not exist'
+                */
+               if(error.message.contains("relation")) {
+                    let rawPropertyNameStartindex = error.message.indexOf('column "') + 8,
+                        rawPropertyNameEndIndex = error.message.indexOf('"', rawPropertyNameStartindex);
+
+                    rawPropertyName = error.message.substring(rawPropertyNameStartindex, rawPropertyNameEndIndex);
+                    propertyDescriptor = mapping.propertyDescriptorForRawPropertyName(rawPropertyName);
+               }
+                /* 
+                    error.message === 'column Organization.typeId does not exist' 
+                */
+               else if(error.message.contains(".")) {
+                    let rawPropertyNameStartindex = error.message.indexOf('.') + 1,
+                        rawPropertyNameEndIndex = error.message.indexOf(' ', rawPropertyNameStartindex);
+
+                    rawPropertyName = error.message.substring(rawPropertyNameStartindex, rawPropertyNameEndIndex);
+                    propertyDescriptor = mapping.propertyDescriptorForRawPropertyName(rawPropertyName);
+               }
+
+
+                error.rawPropertyName = rawPropertyName;
+                error.propertyDescriptor = propertyDescriptor;
+
+                console.log("propertyDescriptor: ",propertyDescriptor);
+            } 
+            else if(doesNotExist && isDatabaseError) {
                 error.name = DataOperationErrorNames.DatabaseMissing;
             }
             return error;
@@ -1847,6 +1912,82 @@ PostgreSQLService.addClassProperties({
             return this.performReadOperation(readOperation);
         }
     },
+    
+    _executeReadStatementForReadOperation: {
+        value: function (rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject) {
+            let objectDescriptor = readOperation.target;
+
+            return this.executeStatement(rawDataOperation, (err, data) => {
+                let isNotLast;
+
+                readOperationExecutedCount++;
+
+                isNotLast = (readOperationsCount - readOperationExecutedCount + 1/*the current/main one*/) > 0;
+
+                if(err) {
+                    // console.error("handleReadOperation Error: readOperation:",readOperation, "rawDataOperation: ",rawDataOperation, "error: ",err);
+                    //self.mapErrorToDataOperationErrorName(err);
+                    this.mapRawDataOperationErrorToDataOperation(rawDataOperation, err, readOperation);
+
+                    if(err.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
+                        let objectDescriptor = err.objectDescriptor;
+                        return this.createTableForObjectDescriptor(objectDescriptor)
+                        .then((result) => {
+                            let operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], false);
+                            /*
+                                If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
+                            */
+                            operation.target = objectDescriptor;
+                            operation.readOperationExecutedCount = readOperationExecutedCount;
+                            resolve(operation);
+                        })
+                        .catch((error) => {
+                            console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
+                            error.readOperationExecutedCount = readOperationExecutedCount;
+                            reject(error);
+                        });
+
+                    } else if(err.name === DataOperationErrorNames.PropertyDescriptorStoreMissing) {
+                        let propertyDescriptor = err.propertyDescriptor;
+                        return this.createTableColumnForPropertyDescriptor(propertyDescriptor, err.objectDescriptor)
+                        .then((result) => {
+                            //Now try again executing the statement
+                            this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
+                        });
+
+                    }
+
+                    if(readOperation.criteria && readOperation.criteria.expression) {
+                        console.log("------------------> readOperation.criteria.expression:",readOperation.criteria.expression);
+                        console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
+                    }
+                }
+
+
+                if(err) {
+                    // reject(operation);
+                    err.readOperationExecutedCount = readOperationExecutedCount;
+                    reject(err);
+                } else {
+
+                    /*
+                        If the readOperation has a referrer, it's a readOperation created by us to fetch an object's property, so we're going to use that.
+                    */
+
+                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, (data && (data.rows || data.records)), isNotLast);
+                    /*
+                        If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
+                    */
+                    operation.target = objectDescriptor;
+                    //objectDescriptor.dispatchEvent(operation);
+                    operation.readOperationExecutedCount = readOperationExecutedCount;
+                    resolve(operation);
+                }
+
+            }, readOperation)
+
+        }
+    },
 
     performReadOperation: {
         value: function performReadOperation(readOperation) {
@@ -1908,63 +2049,7 @@ PostgreSQLService.addClassProperties({
             firstPromise = new Promise(function (resolve, reject) {
 
                 if(rawDataOperation.sql) {
-                    self.executeStatement(rawDataOperation, function (err, data) {
-                        var isNotLast;
-
-                        readOperationExecutedCount++;
-
-                        isNotLast = (readOperationsCount - readOperationExecutedCount + 1/*the current/main one*/) > 0;
-
-                        if(err) {
-                            // console.error("handleReadOperation Error: readOperation:",readOperation, "rawDataOperation: ",rawDataOperation, "error: ",err);
-                            //self.mapErrorToDataOperationErrorName(err);
-                            self.mapRawDataOperationErrorToDataOperation(rawDataOperation, err, readOperation);
-
-                            if(err.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
-                                let objectDescriptor = err.objectDescriptor;
-                                return self.createTableForObjectDescriptor(objectDescriptor)
-                                .then((result) => {
-                                    let operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], false);
-                                    /*
-                                        If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
-                                    */
-                                    operation.target = objectDescriptor;
-                                    resolve(operation);
-                                })
-                                .catch((error) => {
-                                    console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
-                                    reject(error);
-                                });
-    
-                            }
-
-                            if(readOperation.criteria && readOperation.criteria.expression) {
-                                console.log("------------------> readOperation.criteria.expression:",readOperation.criteria.expression);
-                                console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
-                            }
-                        }
-
-
-                        if(err) {
-                            // reject(operation);
-                            reject(err);
-                        } else {
-
-                            /*
-                                If the readOperation has a referrer, it's a readOperation created by us to fetch an object's property, so we're going to use that.
-                            */
-
-                            var operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, (data && (data.rows || data.records)), isNotLast);
-                            /*
-                                If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
-                            */
-                            operation.target = objectDescriptor;
-                            //objectDescriptor.dispatchEvent(operation);
-
-                            resolve(operation);
-                        }
-
-                    }, readOperation)
+                    self._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject)
                     .catch(error => {
                         // let operation = this.responseOperationForReadOperation(readOperation, error, null, false/*isNotLast*/);
                         // readOperation.target.dispatchEvent(operation);
@@ -1984,6 +2069,8 @@ PostgreSQLService.addClassProperties({
                 */
             //return 
             firstPromise.then(function(firstReadUpdateOperation) {
+                readOperationExecutedCount = firstReadUpdateOperation.readOperationExecutedCount;
+
                 if(readOperationsCount > 0) {
 
                     for(i=0, countI = readOperationsCount;(i<countI); i++) {
@@ -2792,7 +2879,7 @@ PostgreSQLService.addClassProperties({
     // }
 
     _buildObjectDescriptorColumnAndIndexString : {
-        value: function _buildColumnString(objectDescriptor, columnName, columnType, propertyDescriptor, mappingRule, columnsDone, colunmnStrings, colunmnIndexStrings) {
+        value: function _buildColumnString(objectDescriptor, prefix = "", columnName, columnType, propertyDescriptor, mappingRule, columnsDone, colunmnStrings, colunmnIndexStrings) {
             if(!columnsDone.has(columnName)) {
 
                 columnsDone.add(columnName);
@@ -2802,7 +2889,7 @@ PostgreSQLService.addClassProperties({
                 //     columnSQL = `${columnSQL} COLLATE pg_catalog."default"`;
                 // }
 
-                var columnSQL = `  ${escapeIdentifier(columnName)} ${columnType} ${(columnType === 'text') ? 'COLLATE pg_catalog."default"' : ''}${propertyDescriptor.isUnique ? 'UNIQUE' : ''}`;
+                var columnSQL = `  ${prefix}${escapeIdentifier(columnName)} ${columnType} ${(columnType === 'text') ? 'COLLATE pg_catalog."default"' : ''}${propertyDescriptor.isUnique ? 'UNIQUE' : ''}`;
 
                 // if (colunmnStrings.length > 0) {
                 //     columnSQL += ',\n';
@@ -3230,7 +3317,7 @@ PostgreSQLService.addClassProperties({
                     /*
                         iPropertyDescriptor is now raw data level, we'll need to clean up
                     */
-                    this._buildObjectDescriptorColumnAndIndexString(objectDescriptor, iPropertyDescriptor.name, columnType, iPropertyDescriptor, iRule, colunmns, colunmnStrings, colunmnIndexStrings);
+                    this._buildObjectDescriptorColumnAndIndexString(objectDescriptor, "", iPropertyDescriptor.name, columnType, iPropertyDescriptor, iRule, colunmns, colunmnStrings, colunmnIndexStrings);
 
                     /*
                         We may have to add some specical constructions for supporting map and enforcing unique arrays:
@@ -3273,6 +3360,64 @@ PostgreSQLService.addClassProperties({
 
         }
     },
+
+
+    mapObjectPropertyStoreCreateOperationToRawOperation: {
+        value: function (dataOperation, rawDataOperation = {}) {
+
+                var propertyDescriptor = dataOperation.data.propertyDescriptor,
+                    objectDescriptor = dataOperation.data.objectDescriptor,
+                    mapping = objectDescriptor && this.mappingForType(objectDescriptor),
+                    tableName = this.tableForObjectDescriptor(objectDescriptor),
+                    rawDataDescriptor = this.rawDataDescriptorForObjectDescriptor(objectDescriptor),
+                    rawPropertyDescriptors = Array.from(rawDataDescriptor.propertyDescriptors),
+                    addColumnPrefix = "ADD COLUMN ",
+                    objectRule, objectRuleSource, rawDataMappingRule, rawPropertyDescriptor,
+                    schemaName = this.connection.schema,
+                    continueAfterTimeout = false,
+                    includeResultMetadata = true,
+                    columnName,
+                    colunmns = new Set(),
+                    colunmnStrings = [],
+                    colunmnIndexStrings = [],
+                    columnType,
+                    owner = this.connection.owner,
+                    semiColumnLineBreak = ";\n",
+                    semiColumn = ";",
+
+                    /*
+                        ALTER TABLE table_name
+                        ADD COLUMN column_name1 data_type constraint,
+                        ADD COLUMN column_name2 data_type constraint,
+                        ...
+                        ADD COLUMN column_namen data_type constraint;
+                    */
+
+                    alterTableTemplatePrefix = `ALTER TABLE "${schemaName}"."${tableName}"\n`;
+
+                this.mapConnectionToRawDataOperation(rawDataOperation);
+
+                objectRule = mapping.objectMappingRuleForPropertyName(propertyDescriptor.name);
+                objectRuleSource = objectRule.sourcePath;
+                rawPropertyDescriptor = rawDataDescriptor.propertyDescriptorForName(objectRuleSource);
+                rawDataMappingRule = objectRule && mapping.rawDataMappingRuleForPropertyName(objectRuleSource);
+
+                columnType = rawPropertyDescriptor.valueType;
+
+                this._buildObjectDescriptorColumnAndIndexString(objectDescriptor, addColumnPrefix, rawPropertyDescriptor.name, columnType, rawPropertyDescriptor, rawDataMappingRule, colunmns, colunmnStrings, colunmnIndexStrings);
+
+                sql = `${alterTableTemplatePrefix}${(colunmnStrings.length > 0) ? colunmnStrings.join(',\n') : ""}${(colunmnStrings.length > 0) ? semiColumnLineBreak : ""}${(colunmnIndexStrings.length > 0) ? colunmnIndexStrings.join(',\n') : ""}${(colunmnIndexStrings.length > 0) ? semiColumn : ""}`;
+
+                rawDataOperation.sql = sql;
+                rawDataOperation.continueAfterTimeout = continueAfterTimeout;
+                rawDataOperation.includeResultMetadata = includeResultMetadata;
+                //rawDataOperation.parameters = parameters;
+
+                return rawDataOperation;
+
+        }
+    },
+
 
     //We need a mapping to go from model(schema?)/ObjectDescriptor to schema/table
 //     mapToRawCreateObjectDescriptorOperation_old: {
@@ -3622,7 +3767,7 @@ PostgreSQLService.addClassProperties({
      * @argument {DataOperation} dataOperation - The dataOperation to execute
   `  * @returns {Promise} - The Promise for the execution of the operation
      */
-    handleCreateObjectDescriptorOperation: {
+    handleObjectStoreCreateOperation: {
         value: function (createOperation) {
             var self = this;
 
@@ -3685,24 +3830,72 @@ PostgreSQLService.addClassProperties({
     createTableForObjectDescriptor: {
         value: function(objectDescriptor) {
             //Inherited from DataService
-            var createOperation = this.createObjectStoreOperationForObjectDescriptor(objectDescriptor);
+            var createOperation = this.objectStoreCreateOperationForObjectDescriptor(objectDescriptor);
             return this.createObjectDescriptorTableForCreateOperation(createOperation);
         }
     },
 
-    __createObjectDescriptorTablePromiseByObjectDescriptor: {
+    /**
+     * Handles the mapping and execution of a DataOperation to create a column for 
+     * an ObjectDescriptor's propertyDescriptor.
+     *
+     * @method
+     * @argument {DataOperation} dataOperation - The dataOperation to execute
+  `  * @returns {Promise} - The Promise for the execution of the operation
+     */
+  handleObjectPropertyStoreCreateOperation: {
+    value: function (createOperation) {
+        var self = this;
+
+        var operation = new DataOperation();
+
+        operation.target = createOperation.target;
+        operation.referrerId = createOperation.id;
+        operation.clientId = createOperation.clientId;
+        operation.rawDataService = this;
+
+        this.createObjectPropertyColumnForCreateOperation(createOperation)
+        .then((data)=> {
+            // successful response
+            operation.type = DataOperation.Type.CreateCompletedOperation;
+            operation.data = createOperation.data;
+        })
+        .catch((error) => {
+            // an error occurred
+            console.log(error, error.stack, rawDataOperation);
+            operation.type = DataOperation.Type.CreateFailedOperation;
+            error.objectDescriptor = createOperation.data;
+            //Should the data be the error?
+            operation.data = error;
+        })
+        .finally(() => {
+            operation.target.dispatchEvent(operation);
+        });
+
+    }
+},
+
+    createTableColumnForPropertyDescriptor: {
+        value: function(propertyDescriptor, objectDescriptor) {
+            //Inherited from DataService
+            var createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, objectDescriptor);
+            return this.createObjectPropertyDescriptorColumnForCreateOperation(createOperation);
+        }
+    },
+
+    __createObjectStorePromiseByObject: {
         value: undefined
     },
-    _createObjectDescriptorTablePromiseByObjectDescriptor: {
+    _createObjectStorePromiseByObject: {
         get: function() {
-            return this.__createObjectDescriptorTablePromiseByObjectDescriptor || (this.__createObjectDescriptorTablePromiseByObjectDescriptor = new Map());
+            return this.__createObjectStorePromiseByObject || (this.__createObjectStorePromiseByObject = new Map());
         }
     },
 
 
     createObjectDescriptorTableForCreateOperation: {
         value: function(createOperation) {
-            let promise = this._createObjectDescriptorTablePromiseByObjectDescriptor.get(createOperation.data);
+            let promise = this._createObjectStorePromiseByObject.get(createOperation.data);
 
             if(promise) {
                 return promise;
@@ -3725,12 +3918,40 @@ PostgreSQLService.addClassProperties({
     
                 });
 
-                this._createObjectDescriptorTablePromiseByObjectDescriptor.set(createOperation.data, promise);
+                this._createObjectStorePromiseByObject.set(createOperation.data, promise);
                 return promise;
             }
         }
     },
 
+    createObjectPropertyDescriptorColumnForCreateOperation: {
+        value: function(createOperation) {
+            let promise = this._createObjectStorePromiseByObject.get(createOperation.data);
+
+            if(promise) {
+                return promise;
+            } else {
+                let rawOperation = {};
+
+                let rawDataOperation = this.mapObjectPropertyStoreCreateOperationToRawOperation(createOperation, rawOperation);
+    
+                promise = new Promise((resolve, reject) => {
+                    //console.log("rawDataOperation: ",rawDataOperation);
+                    this.performRawDataOperation(rawDataOperation, function (err, data) {
+
+                        err
+                        ? reject(err)
+                        : resolve(data);
+
+                    }, createOperation);
+
+                });
+
+                this._createObjectStorePromiseByObject.set(createOperation.data, promise);
+                return promise;
+            }
+        }
+    },
 
     /*
         Modifying a table, when adding a property descriptor to an objectdescriptor
@@ -4020,9 +4241,11 @@ PostgreSQLService.addClassProperties({
 
             var data = createOperation.data;
 
-            if (createOperation.target === ObjectStoreDescriptor) {
-                return this.handleCreateObjectDescriptorOperation(createOperation);
-            } else {
+            // if (createOperation.target === ObjectStoreDescriptor) {
+            //     return this.handleCreateObjectDescriptorOperation(createOperation);
+            // } else if(createOperation.target === ObjectPropertyStoreDescriptor) {
+            //     return this.handleObjectPropertyStoreCreateOperation(createOperation);
+            // } else {
                 var referrer = createOperation.referrer;
 
                 if(referrer) {
@@ -4089,7 +4312,7 @@ PostgreSQLService.addClassProperties({
                     })
                 }
 
-            }
+            // }
 
         }
     },
@@ -5477,6 +5700,31 @@ PostgreSQLService.addClassProperties({
 
                     });
 
+                } else if(error.name === DataOperationErrorNames.PropertyDescriptorStoreMissing) {
+                    let objectDescriptor = error.objectDescriptor,
+                        propertyDescriptor = error.propertyDescriptor;
+
+                        this.createTableColumnForPropertyDescriptor(propertyDescriptor)
+                        .then((result) => {
+                            this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
+                        })
+                        .catch((error) => {
+                            shouldRetry = false;
+                            console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
+    
+                            //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
+                            responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                            ? DataOperation.Type.CommitTransactionFailedOperation 
+                            : DataOperation.Type.PerformTransactionFailedOperation
+                            responseOperation.data = error;
+    
+                            // release the client back to the pool
+                            done();
+    
+                            responseOperation.target.dispatchEvent(responseOperation);
+    
+                        });
+    
                 } else {
                     shouldRetry = false;
 
