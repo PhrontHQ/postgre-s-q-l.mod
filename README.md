@@ -1,2 +1,2 @@
 # postgre-s-q-l-mod
-Mod to build live-apps using PostgreSQL
+Data Service Mod to use PostgreSQL
