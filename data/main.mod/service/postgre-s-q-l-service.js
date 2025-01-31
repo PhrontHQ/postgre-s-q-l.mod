@@ -463,6 +463,8 @@ PostgreSQLService.addClassProperties({
                         secret = result[0];
                         databaseCredentials = secret.value;
 
+                        //console.debug("databaseCredentials: ", databaseCredentials);
+
                         if(this.clientPool) {
                             //Hard-coded custom object-mapping
                             this.clientPool.databaseCredentials = databaseCredentials;
@@ -1131,7 +1133,11 @@ PostgreSQLService.addClassProperties({
                     }
                 }
             } else {
-                objectDescriptor = dataOperation.target;
+                /*
+                    If the rawDataOperation has speific objectDescriptor set, we use it, it's the one used for producing the SQL.
+                    Otherwise we use dataOperation's target
+                */
+                objectDescriptor = rawDataOperation.objectDescriptor || dataOperation.target;
             }
 
             return objectDescriptor;
@@ -1208,6 +1214,10 @@ PostgreSQLService.addClassProperties({
             */
             if(!this.handlesType(readOperation.target)) {
                 return;
+            }
+
+            if(!rawDataOperation.dataOperation) {
+                rawDataOperation.dataOperation = readOperation;
             }
 
 
@@ -1589,7 +1599,7 @@ PostgreSQLService.addClassProperties({
                             //We need to buil the criteria for the readOperation on iValueDescriptorReference / iValueSchemaDescriptor
 
                                                             /*
-                                We start with readOperatio criteria being
+                                We start with readOperation criteria being
 
                                 _expression:'id == $id'
                                 _parameters:{id: 'cb3383a0-6bb5-45bb-9ed9-437d6a8c4dfa'}
@@ -1635,36 +1645,92 @@ PostgreSQLService.addClassProperties({
 
                                     if(readExpressionsCount === 1) {
                                         //We can re-use the current operation to do what we want
-                                        iReadOperation = readOperation;
-                                        iReadOperation.target = iValueDescriptorReference;
-                                        iReadOperation.data = {};
+                                        //iReadOperation = readOperation;
+                                        // iReadOperation.target = iValueDescriptorReference;
+                                        // iReadOperation.data = {};
 
+                                        rawDataOperation.target = iValueDescriptorReference;
+
+                                        let iValueDescriptorReferenceTableName = this.tableForObjectDescriptor(iValueDescriptorReference);
+                                        rawDataOperation.objectDescriptor = iValueDescriptorReference;
+                                        rawDataOperation.tableName = iValueDescriptorReferenceTableName;
+                                        let targetMapping = this.mappingForType(iValueDescriptorReference);
+                                        rawDataOperation.mapping = targetMapping;
+
+
+                                        //Set what to fetch to be all columns of the table hosting objects at the end of the relationship
+                                        let iValueDescriptorReferenceColumnNames = this.columnNamesForObjectDescriptor(iValueDescriptorReference);
+                                        //let escapedRawReadExpressions = iValueDescriptorReferenceColumnNames.map(columnName => this.qualifiedNameForColumnInTable(columnName, iValueDescriptorReferenceTableName));
+                                        let targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRules;
+
+                                        escapedRawReadExpressions = [];
+                                        for(let iColumnName in targetRawDataMappingRules) {
+                                            let iRule = targetRawDataMappingRules[iColumnName];
+                                            escapedRawReadExpressions.push(
+                                                this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iRule.propertyDescriptor,iRule.targetPath, targetMapping, operationLocales, iValueDescriptorReferenceTableName)
+                                            )
+                                        }
+                                        
+                                        rawDataOperation.columnNames = escapedRawReadExpressions;
                                         //We're not returning anything from the original objectDescriptor.
                                         //REVIEW - needs to be better structured when we can make it more general
-                                        rawReadExpressions= null;
+                                        rawReadExpressions = null;
+
+
+                                        // iReadOperation = new DataOperation();
+                                        // iReadOperation.clientId = readOperation.clientId;
+                                        // iReadOperation.referrer = readOperation;
+                                        // iReadOperation.type = DataOperation.Type.ReadOperation;
+                                        // iReadOperation.target = iValueDescriptorReference;
+                                        // iReadOperation.data = {};
+                                        // (readOperations || (readOperations = [])).push(iReadOperation);
+    
+                                        //                                         //We're not returning anything from the original objectDescriptor.
+                                        // //REVIEW - needs to be better structured when we can make it more general
+                                        // rawReadExpressions= null;
+
                                     }
 
                                     /*
-                                        we find our primaryKey on the other side, we can just use the converter since we have the primary key value:
+                                        1/16/2025 : shortcut to test new logic in a specific case without impacting others for now
                                     */
-                                    iInversePropertyDescriptor = iValueDescriptorReference && iValueDescriptorReference.propertyDescriptorForName(iPropertyDescriptor.inversePropertyName);
-                                    iInversePropertyObjectRule = iValueDescriptorReferenceMapping && iValueDescriptorReferenceMapping.objectMappingRuleForPropertyName(iPropertyDescriptor.inversePropertyName);
-                                    iInversePropertyObjectRuleConverter = iInversePropertyObjectRule && iInversePropertyObjectRule.converter;
-
-                                    if(iInversePropertyDescriptor) {
-
-                                        if(iInversePropertyDescriptor.cardinality === 1) {
-                                            iReadOperationCriteriaExpression = `${iInversePropertyDescriptor.name}.${criteria.expression}`;
-
-                                        } else {
-                                            iReadOperationCriteriaExpression = `${iInversePropertyDescriptor.name}.filter{${criteria.expression}}`;
+                                    if(readOperation.hints?.snapshot) {
+                                        //Use the rule.
+                                        let mappingScope = mapping._scope.nest(readOperation);
+                                        mappingScope = mappingScope.nest(readOperation.hints?.snapshot);
+            
+                                        rawDataOperation.criteria = iRawDataMappingRule.reverter.convertCriteriaForValue(iObjectRule.expression(mappingScope));
+            
+        
+                                    }
+                                    else if(criteria.name === 'rawDataPrimaryKeyCriteria') {
+                                        rawDataOperation.criteria = iRawDataMappingRuleConverter.convertCriteriaForValue(criteria.parameters.id)
+                                    } else {
+                                        /*
+                                            we find our primaryKey on the other side, we can just use the converter since we have the primary key value:
+                                        */
+                                            iInversePropertyDescriptor = iValueDescriptorReference && iValueDescriptorReference.propertyDescriptorForName(iPropertyDescriptor.inversePropertyName);
+                                        iInversePropertyObjectRule = iValueDescriptorReferenceMapping && iValueDescriptorReferenceMapping.objectMappingRuleForPropertyName(iPropertyDescriptor.inversePropertyName);
+                                        iInversePropertyObjectRuleConverter = iInversePropertyObjectRule && iInversePropertyObjectRule.converter;
+    
+                                        if(iInversePropertyDescriptor) {
+    
+                                            //This asssumes a single-field primary/foreign key matching and should be made more robust using iInversePropertyObjectRule syntax
+                                            if(iInversePropertyDescriptor.cardinality === 1) {
+                                                iReadOperationCriteriaExpression = `${iInversePropertyDescriptor.name}.${criteria.expression}`;
+    
+                                            } else {
+                                                iReadOperationCriteriaExpression = `${iInversePropertyDescriptor.name}.filter{${criteria.expression}}`;
+                                            }
+                                            iReadOperationCriteria = new Criteria().initWithExpression(iReadOperationCriteriaExpression, criteria.parameters);
+                                            // iReadOperationCriteria = iInversePropertyObjectRuleConverter.convertCriteriaForValue(criteria.parameters.id);
                                         }
-                                        iReadOperationCriteria = new Criteria().initWithExpression(iReadOperationCriteriaExpression, criteria.parameters);
-                                        // iReadOperationCriteria = iInversePropertyObjectRuleConverter.convertCriteriaForValue(criteria.parameters.id);
+                                        else {
+                                            //console.error("Can't fulfill fetching read expression '"+iExpression+"'. No inverse property descriptor was found for '"+objectDescriptor.name+"', '"+iExpression+"' with inversePropertyName '"+iPropertyDescriptor.inversePropertyName+"'");
+                                        }
                                     }
-                                    else {
-                                        //console.error("Can't fulfill fetching read expression '"+iExpression+"'. No inverse property descriptor was found for '"+objectDescriptor.name+"', '"+iExpression+"' with inversePropertyName '"+iPropertyDescriptor.inversePropertyName+"'");
-                                    }
+
+                          
 
                                 } else {
                                     /*
@@ -1704,6 +1770,8 @@ PostgreSQLService.addClassProperties({
                                     iReadOperation.data = {};
                                     (readOperations || (readOperations = [])).push(iReadOperation);
                                 }
+                                //(readOperations || (readOperations = [])).push(iReadOperation);
+
 
                             } else {
                                 //console.log("No implementation yet for external read expressions with a non equal criteria");
@@ -1766,8 +1834,9 @@ PostgreSQLService.addClassProperties({
 
                 if(!rawCriteria) {
                     try {
-                        rawCriteria = this.mapCriteriaToRawCriteria(criteria, mapping, operationLocales, (rawExpressionJoinStatements = new SQLJoinStatements())
-                        );
+                        //Prefering rawDataOperation.criteria if we have it, as we attempt to not override the readOperation
+                        rawCriteria = this.mapCriteriaToRawCriteria((rawDataOperation.criteria || criteria), (rawDataOperation.mapping || mapping), operationLocales, (rawExpressionJoinStatements = new SQLJoinStatements())
+                    );
 
                     } catch (error) {
                         rawDataOperation.error = error;
@@ -1796,11 +1865,11 @@ PostgreSQLService.addClassProperties({
                     We're now going to trust that if there's only one readExpression actually speficied, that's all you get. Otherwise we return a json structure
                 */
 
-                if(!useDefaultExpressions && readExpressions.length === 1 && (readOperation.referrer || readOperation.referrerId)) {
-                    sql = `SELECT DISTINCT ${escapedRawReadExpressions.join()} FROM "${schemaName}"."${tableName}"`;
-                } else {
-                    sql = `SELECT DISTINCT (SELECT to_jsonb(_) FROM (SELECT ${escapedRawReadExpressions.join(",")}) as _) FROM "${schemaName}"."${tableName}"`;
-                }
+                // if(!useDefaultExpressions && readExpressions.length === 1 && (readOperation.referrer || readOperation.referrerId)) {
+                //     sql = `SELECT DISTINCT ${escapedRawReadExpressions.join()} FROM "${schemaName}"."${tableName}"`;
+                // } else {
+                    sql = `SELECT DISTINCT (SELECT to_jsonb(_) FROM (SELECT ${escapedRawReadExpressions.join(",")}) as _) FROM "${schemaName}"."${(rawDataOperation.tableName || tableName)}"`;
+                //}
 
                 //Adding the join expressions if any
                 if(rawExpressionJoinStatements.size) {
@@ -1933,7 +2002,7 @@ PostgreSQLService.addClassProperties({
                         let objectDescriptor = err.objectDescriptor;
                         return this.createTableForObjectDescriptor(objectDescriptor)
                         .then((result) => {
-                            let operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], false);
+                            let operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], false, rawDataOperation.target);
                             /*
                                 If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                             */
@@ -1974,7 +2043,7 @@ PostgreSQLService.addClassProperties({
                         If the readOperation has a referrer, it's a readOperation created by us to fetch an object's property, so we're going to use that.
                     */
 
-                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, (data && (data.rows || data.records)), isNotLast);
+                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, (data && (data.rows || data.records)), isNotLast, rawDataOperation.target);
                     /*
                         If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                     */
@@ -2022,7 +2091,7 @@ PostgreSQLService.addClassProperties({
 
 
             if(rawDataOperation.error) {
-                var errorOperation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, rawDataOperation.error, null, false);
+                var errorOperation = this.responseOperationForReadOperation(rawDataOperation.dataOperation.referrer ? rawDataOperation.dataOperation.referrer : rawDataOperation.dataOperation, rawDataOperation.error, null, false, rawDataOperation.target);
                 /*
                     If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                 */
@@ -2049,7 +2118,7 @@ PostgreSQLService.addClassProperties({
             firstPromise = new Promise(function (resolve, reject) {
 
                 if(rawDataOperation.sql) {
-                    self._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject)
+                    self._executeReadStatementForReadOperation(rawDataOperation, rawDataOperation.dataOperation, readOperationsCount, readOperationExecutedCount, resolve, reject)
                     .catch(error => {
                         // let operation = this.responseOperationForReadOperation(readOperation, error, null, false/*isNotLast*/);
                         // readOperation.target.dispatchEvent(operation);
@@ -2058,7 +2127,7 @@ PostgreSQLService.addClassProperties({
                 } else {
                     readOperationExecutedCount++;
 
-                    var operation = self.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], undefined);
+                    var operation = self.responseOperationForReadOperation(rawDataOperation.dataOperation.referrer ? rawDataOperation.dataOperation.referrer : rawDataOperation.dataOperation, null, [], false, rawDataOperation.target);
                     resolve(operation);
                 }
 
@@ -2112,7 +2181,10 @@ PostgreSQLService.addClassProperties({
                 */
                 else if(!readOperation.referrer) {
                     firstReadUpdateOperation.type = DataOperation.Type.ReadCompletedOperation;
-                    objectDescriptor.dispatchEvent(firstReadUpdateOperation);
+                    
+                    //If rawDataOperation has a target, it's going to be what we want, 
+                    // like when resolving an object's property
+                    (rawDataOperation.target || objectDescriptor).dispatchEvent(firstReadUpdateOperation);
 
                     //Resolve once dispatchEvent() is completed, including any pending progagationPromise.
                     firstReadUpdateOperation.propagationPromise.then(() => {
@@ -2130,7 +2202,7 @@ PostgreSQLService.addClassProperties({
 
                 let isNotLast = (readOperationsCount - readOperationExecutedCount + 1/*the current/main one*/) > 0;
 
-                let operation = self.responseOperationForReadOperation(readOperation, error, null, isNotLast/*isNotLast*/);
+                let operation = self.responseOperationForReadOperation(readOperation, error, null, isNotLast/*isNotLast*/, rawDataOperation.target);
                 readOperation.target.dispatchEvent(operation);
 
                 //Resolve once dispatchEvent() is completed, including any pending progagationPromise.

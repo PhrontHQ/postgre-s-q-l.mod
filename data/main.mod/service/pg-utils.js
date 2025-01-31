@@ -114,6 +114,10 @@ var prepareValue = function (val, type, seen, depth = 0) {
     if (val instanceof Range) {
         if(val.begin instanceof Date) {
             return `'${RFC3339UTCRangeStringToRangeConverter.revert(val)}'::tstzrange`;
+        } else if(val.begin instanceof Number) {
+            return Number.isInteger(val.begin) &&  Number.isInteger(val.end) 
+                ? `'${val.toString()}'::int8range`
+                : `'${val.toString()}'::numrange`;
         } else {
             throw "Range raw conversion not handled for Range with begin:"+val.begin+", end:"+val.end;
         }

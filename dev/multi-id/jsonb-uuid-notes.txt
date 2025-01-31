@@ -1,0 +1,36 @@
+https://dba.stackexchange.com/questions/171202/join-jsonb-column-to-normal-pk-column-in-postgres
+
+You can use the following query:
+
+SELECT
+    *
+FROM
+    res
+    JOIN res_rem_sent ON res_rem_sent.body->>'resId' = text(res.id) ;
+JSON represents all of its contents as text, and that's the reason you have to be very careful on how the UUIDs are converted to text by PostgreSQL.
+
+Things to take into consideration:
+
+The ->> operator gets a JSON object field as text.
+On the JSON(B) side, you need to represent the UUIDs using the standard form (as explained in UUID Type), so that conversions between UUID type to the JSON(B) text representation produces the same results.
+If you want the query to be performant, you need to have at least a (functional) index on the body->>'resId' part
+
+CREATE INDEX idx_uuid_res_rem_sent ON res_rem_sent((body->>'resId')) ;
+-- NOTE: the double parenthesis aren't optional
+You get the maximum performance if you also have a text index on Res.id:
+
+CREATE INDEX idx_uuid_res ON Res(text(id)) ;
+Performance could possibly be improved if, instead of using the text representations, comparisons and indexes are done using UUID representations:
+
+(res_rem_sent.body->>'resId')::uuid = res.id
+In this case, if the conversion fails, you will not be able to insert the data into the table.
+
+DBfiddle here to see a practical simulation of this scenario
+http://dbfiddle.uk/?rdbms=postgres_9.6&fiddle=b2441697f16b0999df714ccae777025c
+
+
+
+- 2 possibilities: 
+    - we create a multiId field per columnn / foreign key, either using jsonb, or PG composite types
+        - this is clean through-through, but it risk impacting PG performance while it is the primary storage after.
+    - we create a column per originId, we purposefully bring them all back when the foreign key field is fetched, then make it a multiId (mId) in mod
