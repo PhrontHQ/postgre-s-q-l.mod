@@ -2304,7 +2304,12 @@ PostgreSQLService.addClassProperties({
     addOneRawData: {
         value: function (stream, rawData, context) {
             if(!this.useDataAPI) {
-                return this.super(stream, rawData.to_jsonb, context);
+                /*
+                    When fetching from PG, rawData has a to_jsonb property that actually contains what we want.
+                    But when a SynchronanizationDataService is involved, it's possible we're given the rawData directly
+                    if it's obtained from an origin data service, mapped to object and back to PG's mapping.
+                */
+                return this.super(stream, rawData.to_jsonb ? rawData.to_jsonb : rawData, context);
             } else {
                 return this.super(stream, JSON.parse(rawData[0].stringValue), context);
             }
