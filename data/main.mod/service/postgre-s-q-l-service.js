@@ -3283,6 +3283,10 @@ PostgreSQLService.addClassProperties({
 
                     }
 
+                    if(iPropertyDescriptor.isUnique === true) {
+                        iSchemaPropertyDescriptor.isUnique = iPropertyDescriptor.isUnique;
+                    }
+
                 }
             }
 
