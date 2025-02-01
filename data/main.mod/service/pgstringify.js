@@ -208,8 +208,24 @@ module.exports = {
             string += ")";
 
         } else {
-            // method invocations
             var chain;
+
+            // left-side if it exists
+            if (syntax.args[0].type === "value") {
+                /*
+                departure from frb stringify. watch that it doesn't break others use cases, possibly in a chain?
+                */
+                //|| syntax.type === "has") {
+                //string = chain;
+
+                string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix);
+
+            } else {
+                //string = this.stringify(syntax.args[0], scope, dataMappings) + "." + chain;
+                string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix);
+            }
+            
+            // method invocations
             if (syntax.args.length === 1 && syntax.args[0].type === "mapBlock") {
                 // map block function calls
                 chain = syntax.type + "{" + this.stringify(syntax.args[0].args[1], scope, dataMappings, locales, rawExpressionJoinStatements) + "}";
@@ -233,22 +249,10 @@ module.exports = {
                 }
 
             }
-            // left-side if it exists
-            if (syntax.args[0].type === "value") {
-                /*
-                departure from frb stringify. watch that it doesn't break others use cases, possibly in a chain?
-                */
-               //|| syntax.type === "has") {
-                //string = chain;
 
-                string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix);
-                string += " ";
-                string += chain;
+            string += " ";
+            string += chain;
 
-            } else {
-                //string = this.stringify(syntax.args[0], scope, dataMappings) + "." + chain;
-                string = `${this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix)} ${chain}`;
-            }
         }
 
         // parenthesize if we're going backward in precedence
@@ -343,7 +347,10 @@ module.exports = {
                 var parametersKey = args[1].args[1].value;
                 value = scope[parametersKey];
 
-                if((propertyValueDescriptor && propertyValueDescriptor.name !== "Range") && !Array.isArray(value)) {
+                /*
+                    If propertyDescriptor has a valueType like string or number, we need to put in an array as well
+                */
+                if((!propertyValueDescriptor || (propertyValueDescriptor && propertyValueDescriptor.name !== "Range")) && !Array.isArray(value)) {
                     value = [value];
                 }
 
@@ -1826,8 +1833,11 @@ typeToToken.forEach(function (token, type) {
 
             */
 
-           var argsZeroValue = dataService.stringify(syntax.args[0],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix),
-                argsOneValue = dataService.stringify(syntax.args[1],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+            var argsZeroDataMappings = dataMappings.slice(),
+            argsOneDataMappings = dataMappings.slice();
+
+           var argsZeroValue = dataService.stringify(syntax.args[0],scope, argsZeroDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix),
+                argsOneValue = dataService.stringify(syntax.args[1],scope, argsOneDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
 
            if(argsZeroValue && argsOneValue) {
                 return `${argsZeroValue} ${dataService.mapTokenToRawTokenForValue(token,argsZeroValue)} ${argsOneValue}`;
