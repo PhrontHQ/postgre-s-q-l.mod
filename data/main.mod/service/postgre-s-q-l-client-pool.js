@@ -1,4 +1,5 @@
-var RawDatabaseClientPool = require("mod/data/service/raw-database-client-pool").RawDatabaseClientPool;
+const RawDatabaseClientPool = require("mod/data/service/raw-database-client-pool").RawDatabaseClientPool,
+    os = require('os');
 
 
 
@@ -72,6 +73,13 @@ var PostgreSQLClientPool = exports.PostgreSQLClientPool = RawDatabaseClientPool.
                 database: this.connection.database,
                 password: this.databaseCredentials.password
             };
+
+            /*
+                If no username is set, we'll use the current user as a tentative default
+            */
+            if(!connectionOptions.user && connectionOptions.host.includes("local")) {
+                this.databaseCredentials.username = connectionOptions.user = os.userInfo().username;
+            }
 
             if(this.databaseCredentials.clientPrivateKey || this.databaseCredentials.clientCertificate || this.databaseCredentials.serverCertificate) {
                   // this object will be passed to the TLSSocket constructor
