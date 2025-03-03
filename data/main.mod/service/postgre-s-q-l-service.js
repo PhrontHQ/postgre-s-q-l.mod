@@ -30,6 +30,8 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     DataOperationType = require("mod/data/service/data-operation").DataOperationType,
     //PGClass = (require)("../model/p-g-class").PGClass,
 
+    TransactionDescriptor = require("mod/data/model/transaction.mjson").montageObject,
+
     RDSDataClient,
     BatchExecuteStatementCommand,
     BeginTransactionCommand,
@@ -160,7 +162,7 @@ const PostgreSQLService = exports.PostgreSQLService = class PostgreSQLService ex
         }
 
         this._columnNamesByObjectDescriptor = new Map();
-        this._rawDataDescriptorByObjectDescriptor = new Map();
+        this._rawDataDescriptorByName = new Map();
 
         /*
             Shifted from listening to mainService to getting events on ourselve,
@@ -281,11 +283,13 @@ PostgreSQLService.addClassProperties({
     addMainServiceEventListeners: {
         value: function() {
             this.super();
-            this.mainService.addEventListener(DataOperation.Type.PerformTransactionOperation, this, false);
-            this.mainService.addEventListener(DataOperation.Type.CreateTransactionOperation, this, false);
-            this.mainService.addEventListener(DataOperation.Type.AppendTransactionOperation,this,false);
-            this.mainService.addEventListener(DataOperation.Type.CommitTransactionOperation,this,false);
-            this.mainService.addEventListener(DataOperation.Type.RollbackTransactionOperation,this,false);
+
+            //This should probably moved somehwere else now that Transaction's ObjectDescriptor is the what we listen on
+            // TransactionDescriptor.addEventListener(DataOperation.Type.PerformTransactionOperation, this, false);
+            // TransactionDescriptor.addEventListener(DataOperation.Type.CreateTransactionOperation, this, false);
+            // TransactionDescriptor.addEventListener(DataOperation.Type.AppendTransactionOperation,this,false);
+            // TransactionDescriptor.addEventListener(DataOperation.Type.CommitTransactionOperation,this,false);
+            // TransactionDescriptor.addEventListener(DataOperation.Type.RollbackTransactionOperation,this,false);
 
         }
 
@@ -447,41 +451,50 @@ PostgreSQLService.addClassProperties({
 
     */
 
+    _loadDatabaseCredentialsFromSecret: {
+        value: function(aSecret) {
+            let databaseCredentials = aSecret.value;
+
+            this.databaseCredentials = databaseCredentials;
+            if(this.clientPool) {
+                //Hard-coded custom object-mapping
+                this.clientPool.databaseCredentials = databaseCredentials;
+            }
+
+            return databaseCredentials;
+        }
+    },
+
     postgreSQLClientPoolWillResolveRawClientPromises: {
         value: function (clientPool, promises) {
-            promises.push(new Promise( (resolve, reject) => {
+            if(this.connection.secret) {
 
-                let secretCriteria = new Criteria().initWithExpression("name == $.name", {
-                        name: this.connection.secretName || `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.stage}-${this.connection.database}-database`
-                    }),
-                    secretQuery = DataQuery.withTypeAndCriteria(SecretObjectDescriptor, secretCriteria);
-    
-                this.mainService.fetchData(secretQuery)
-                .then((result) => {
-                    if(result) {
+                let databaseCredentials = this._loadDatabaseCredentialsFromSecret(this.connection.secret);
+                promises.push(Promise.resolve(databaseCredentials));
 
-                        secret = result[0];
-                        databaseCredentials = secret.value;
+            } else {
+                promises.push(new Promise( (resolve, reject) => {
 
-                        //console.debug("databaseCredentials: ", databaseCredentials);
-
-                        if(this.clientPool) {
-                            //Hard-coded custom object-mapping
-                            this.clientPool.databaseCredentials = databaseCredentials;
+                    let secretCriteria = new Criteria().initWithExpression("name == $.name", {
+                            name: this.connection.secretName || `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.stage}-${this.connection.database}-database`
+                        }),
+                        secretQuery = DataQuery.withTypeAndCriteria(SecretObjectDescriptor, secretCriteria);
+        
+                    this.mainService.fetchData(secretQuery)
+                    .then((result) => {
+                        if(result && result.length > 0) {
+                            resolve(this._loadDatabaseCredentialsFromSecret(result[0]));
+                        } else {
+                            console.warn("PostgreSQLService: no secret found with name: ",secretCriteria.parameters.name);
+                            resolve(null);    
                         }
-                        resolve((this.databaseCredentials = databaseCredentials));
-
-                    } else {
-                        console.warn("PostgreSQLService: no secret found with name: ",secretCriteria.parameters.name);
-                        resolve(null);    
-                    }
-                }, (error) => {
-                    //console.log("fetchData failed:",error);
-                    reject(error);
-                });
-    
-            }));
-
+                    }, (error) => {
+                        //console.log("fetchData failed:",error);
+                        reject(error);
+                    });
+        
+                }));
+            }
         }
     },
 
@@ -701,14 +714,14 @@ PostgreSQLService.addClassProperties({
 
             if (!criteria) return undefined;
 
-            if (criteria.parameters) {
+            if (criteria.parameters !== undefined) {
                 if (this.inlineCriteriaParameters) {
                     rawParameters = criteria.parameters;
                 } else {
                     //If we could use parameters with the DataAPI (we can't because it doesn't support some types we need like uuid and uuid[]), we would need stringify to create a new set of parameters. Scope can be different objects, so instead of trying to clone whatever it is, it would be easier to modify stringify so it returns the whole new raw criteria that would contain both the expression and the new parameters bound for SQL.
                     // rawParameters = {};
                     // Object.assign(rawParameters,criteria.parameters);
-                    throw new Error("phron-service.js: mapCriteriaToRawCriteria doesn't handle the use of parametrized SQL query with a dictionary of parameters. If we could use parameters with the DataAPI (we can't because it doesn't support some types we need like uuid and uuid[]), we would need stringify to create a new set of parameters. Scope can be different objects, so instead of trying to clone whatever it is, it would be easier to modify stringify so it returns the whole new raw criteria that would contain both the expression and the new parameters bound for SQL. -> " + JSON.stringify(criteria) + "objectDescriptor: " + mapping.objectDescriptor.name);
+                    throw new Error("postgre-s-q-l-service.js: mapCriteriaToRawCriteria doesn't handle the use of parametrized SQL query with a dictionary of parameters. If we could use parameters with the DataAPI (we can't because it doesn't support some types we need like uuid and uuid[]), we would need stringify to create a new set of parameters. Scope can be different objects, so instead of trying to clone whatever it is, it would be easier to modify stringify so it returns the whole new raw criteria that would contain both the expression and the new parameters bound for SQL. -> " + JSON.stringify(criteria) + "objectDescriptor: " + mapping.objectDescriptor.name);
 
                 }
 
@@ -1085,6 +1098,23 @@ PostgreSQLService.addClassProperties({
             return true;
         }
     },
+    /**
+     * Returns the table name extracted from the passed SQL statement screen
+     *
+     *  ... "schema"."TableName" ...
+     * 
+     * @private
+     * @argument {DataStream} dataStream
+     */
+    _tableNameFromSQLStatement: {
+        value: function(rawDataOperation, error) {
+            let schemaPrefix = `"${rawDataOperation.schema}"."`,
+                tableNameStartIndex = rawDataOperation.sql.indexOf(schemaPrefix),
+                tableNameEndIndex =  error.message.indexOf('"',tableNameStartIndex);
+
+            return rawDataOperation.sql.substring(tableNameStartIndex+schemaPrefix.length, tableNameEndIndex-2);
+        }
+    },
 
     _objectDescriptorNameForRawDataOperationErrorExecutingDataOperation: {
         value: function(rawDataOperation, error, dataOperation) {
@@ -1099,6 +1129,15 @@ PostgreSQLService.addClassProperties({
                     tableNameEndIndex =  error.message.indexOf('"',tableNameStartIndex);
 
                 objectDescriptorName = error.message.substring(tableNameStartIndex, tableNameEndIndex);
+            } else if(error.name === DataOperationErrorNames.InvalidInput) {
+                //`UPDATE  "schema"."TableName" SET "status" = 'Deployed'   WHERE (...);`
+                //`UPDATE  "moe_v1"."Workstation" SET "status" = 'Deployed'   WHERE ("Workstation"."id" = '01954f95-b04e-75f2-8ce2-de8927b1d407' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Deployed'   WHERE ("Workstation"."id" = '01954f95-b04f-77bf-a8d8-cb01e15dd98e' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Deployed'   WHERE ("Workstation"."id" = '01954f95-b050-7336-bdfa-275a7e0670e1' AND "Workstation"."status" is NULL);\nUPDATE  "m…L);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Configured'   WHERE ("Workstation"."id" = '01954f95-b05a-7e8d-bbb2-8a604f36c080' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Incomplete'   WHERE ("Workstation"."id" = '01954f95-b05f-75e1-92ea-5dde1a3bcdf1' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Configured'   WHERE ("Workstation"."id" = '01954f95-b060-7c5a-bf28-c3af6b9b0844' AND "Workstation"."status" is NULL);`
+                objectDescriptorName = this._tableNameFromSQLStatement(rawDataOperation.sql);
+
+            } else if(error.name === DataOperationErrorNames.SyntaxError) {
+
+                objectDescriptorName = this._tableNameFromSQLStatement(rawDataOperation, error);
+
             } else {
                 throw "_objectDescriptorNameForRawDataOperationErrorExecutingDataOperation for unkown Error"
             }
@@ -1152,7 +1191,24 @@ PostgreSQLService.addClassProperties({
                 /* error.message === 'column "identityId" of relation "WebSocketSession" does not exist'*/
                 isColumnMissingError = error.message.contains("column ");
 
-            if(error.code ==='42P01' || (doesNotExist && isTableError && !isColumnMissingError)) {
+            /*
+                err.message === 'invalid input syntax for type json'
+                {"length":160,"name":"error","severity":"ERROR","code":"22P02","detail":"Token \\"Aitriz\\" is invalid.","position":"462","where":"JSON data, line 1: Aitriz","file":"jsonfuncs.c","line":"650","routine":"json_errsave_error"} 
+            */
+            if(error.code ==='42601') {
+                error.name = DataOperationErrorNames.SyntaxError;
+                error.cause = {
+                    sql: rawDataOperation.sql
+                };
+                let objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation);
+                error.objectDescriptor = objectDescriptor;
+
+            } else if(error.code ==='22P02') {
+                error.name = DataOperationErrorNames.InvalidInput;
+                let objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation);
+                error.objectDescriptor = objectDescriptor;
+
+            } else if(error.code ==='42P01' || (doesNotExist && isTableError && !isColumnMissingError)) {
                 /*
                     err.message === 'relation "mod_plum_v1.WebSocketSession" does not exist'
                 */
@@ -1161,7 +1217,7 @@ PostgreSQLService.addClassProperties({
                 let objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation);
                 error.objectDescriptor = objectDescriptor;
             }
-            else if(error.code ==='42703' || (doesNotExist && columnMissingError)) {
+            else if(error.code ==='42703' || (doesNotExist && isColumnMissingError)) {
                 error.name = DataOperationErrorNames.PropertyDescriptorStoreMissing;
 
                 let rawPropertyName,
@@ -1664,6 +1720,14 @@ PostgreSQLService.addClassProperties({
                                         let targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRules;
 
                                         escapedRawReadExpressions = [];
+
+                                        //Adds the primaryKeys to the columns fetched
+                                        if(rawDataPrimaryKeys) {
+                                            rawDataPrimaryKeys.forEach(item => escapedRawReadExpressions.add(this.qualifiedNameForColumnInTable(item,iValueDescriptorReferenceTableName)));
+                                        } else if(primaryKeyPropertyDescriptors) {
+                                            primaryKeyPropertyDescriptors.forEach(item => escapedRawReadExpressions.add(this.qualifiedNameForColumnInTable(item.name, iValueDescriptorReferenceTableName)));
+                                        }
+
                                         for(let iColumnName in targetRawDataMappingRules) {
                                             let iRule = targetRawDataMappingRules[iColumnName];
                                             escapedRawReadExpressions.push(
@@ -1970,6 +2034,7 @@ PostgreSQLService.addClassProperties({
 
     handleReadOperation: {
         value: function (readOperation) {
+            console.log(this.identifier+" handle readOperation id " + readOperation.id + " for "+readOperation.target.name+ (readOperation?.data?.readExpressions? (" "+readOperation?.data?.readExpressions) : "") +" like "+ readOperation.criteria);
 
             /*
                 Until we solve more efficiently (lazily) how RawDataServices listen for and receive data operations, we have to check wether we're the one to deal with this:
@@ -1977,6 +2042,10 @@ PostgreSQLService.addClassProperties({
             if(!this.handlesType(readOperation.target)) {
                 return;
             }
+
+            // if(readOperation.target.name === "Workstation" && readOperation.data.readExpressions[0] === "parent") {
+            //     console.log(">>>>>>>>>>>>>>>>>>> handleReadOperation id " + readOperation.id);
+            // }
 
             return this.performReadOperation(readOperation);
         }
@@ -2018,11 +2087,15 @@ PostgreSQLService.addClassProperties({
 
                     } else if(err.name === DataOperationErrorNames.PropertyDescriptorStoreMissing) {
                         let propertyDescriptor = err.propertyDescriptor;
-                        return this.createTableColumnForPropertyDescriptor(propertyDescriptor, err.objectDescriptor)
-                        .then((result) => {
-                            //Now try again executing the statement
-                            this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
-                        });
+                        if(propertyDescriptor) {
+                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor, err.objectDescriptor)
+                            .then((result) => {
+                                //Now try again executing the statement
+                                this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
+                            });    
+                        } else {
+                            reject(err);
+                        }
 
                     }
 
@@ -2117,6 +2190,9 @@ PostgreSQLService.addClassProperties({
 
             firstPromise = new Promise(function (resolve, reject) {
 
+                console.log("readOperation "+readOperation.id+" sql: "+rawDataOperation.sql);
+
+
                 if(rawDataOperation.sql) {
                     self._executeReadStatementForReadOperation(rawDataOperation, rawDataOperation.dataOperation, readOperationsCount, readOperationExecutedCount, resolve, reject)
                     .catch(error => {
@@ -2200,6 +2276,7 @@ PostgreSQLService.addClassProperties({
 
                 }
 
+                error.sql = rawDataOperation.sql;
                 let isNotLast = (readOperationsCount - readOperationExecutedCount + 1/*the current/main one*/) > 0;
 
                 let operation = self.responseOperationForReadOperation(readOperation, error, null, isNotLast/*isNotLast*/, rawDataOperation.target);
@@ -2759,17 +2836,22 @@ PostgreSQLService.addClassProperties({
                     and many similar examples
                 */
 
-                var escapedValue = escapeString(value, type, propertyDescriptor);
-                if(propertyDescriptor?.isOneWayEncrypted) {
-                    if(dataOperation && (dataOperation.type === DataOperation.Type.CreateOperation || dataOperation.type === DataOperation.Type.UpdateOperation)) {
-                        return `${this.connection.schema}.crypt(${escapedValue}, ${this.connection.schema}.gen_salt('${this.encryptionSaltHashingAlgorithm}'${this.encryptionSaltHashingAlgorithmIterationCount ? ','+this.encryptionSaltHashingAlgorithmIterationCount : ""}))`;
-                    } else {
-                        //For read, we use the name of the colum that contains the encrypted value as the salt
-                        return `${this.connection.schema}.crypt(${escapedValue}, ${rawPropertyName})`;
-                    }
+                if(propertyDescriptor?._valueDescriptorReference instanceof Enum) {
+                    return propertyDescriptor._valueDescriptorReference.intValueForMember(value);
                 } else {
-                    return escapedValue;
+                    var escapedValue = escapeString(value, type, propertyDescriptor);
+                    if(propertyDescriptor?.isOneWayEncrypted) {
+                        if(dataOperation && (dataOperation.type === DataOperation.Type.CreateOperation || dataOperation.type === DataOperation.Type.UpdateOperation)) {
+                            return `${this.connection.schema}.crypt(${escapedValue}, ${this.connection.schema}.gen_salt('${this.encryptionSaltHashingAlgorithm}'${this.encryptionSaltHashingAlgorithmIterationCount ? ','+this.encryptionSaltHashingAlgorithmIterationCount : ""}))`;
+                        } else {
+                            //For read, we use the name of the colum that contains the encrypted value as the salt
+                            return `${this.connection.schema}.crypt(${escapedValue}, ${rawPropertyName})`;
+                        }
+                    } else {
+                        return escapedValue;
+                    }
                 }
+
             }
             else {
                 return prepareValue(value, type, propertyDescriptor);
@@ -2853,8 +2935,10 @@ PostgreSQLService.addClassProperties({
 
     tableForObjectDescriptor: {
         value: function (objectDescriptor) {
-            //Hard coded for now, should be derived from a mapping telling us n which databaseName that objectDescriptor is stored
-            return objectDescriptor.name;
+            /*
+                Hard coded for now, should be derived from a mapping telling us n which databaseName that objectDescriptor is stored
+            */
+            return this.mappingForType(objectDescriptor)?.rawDataTypeName || objectDescriptor.name;
         }
     },
 
@@ -2990,13 +3074,17 @@ PostgreSQLService.addClassProperties({
     },
 
 
-    _rawDataDescriptorByObjectDescriptor: {
+    _rawDataDescriptorByName: {
         value: undefined
     },
 
     rawDataDescriptorForObjectDescriptor: {
         value: function(objectDescriptor) {
-            return this._rawDataDescriptorByObjectDescriptor.get(objectDescriptor) || this.buildRawDataDescriptorForObjectDescriptor(objectDescriptor);
+            /*
+                Test if our mapping for objectDescriptor has a rawDataTypeName property specified.
+                We may already have a rawDataDescriptor for it.
+            */
+            return this._rawDataDescriptorByName.get(this.tableForObjectDescriptor(objectDescriptor)) || this.buildRawDataDescriptorForObjectDescriptor(objectDescriptor);
         }
     },
 
@@ -3034,12 +3122,12 @@ PostgreSQLService.addClassProperties({
                 columnName,
                 columnType,
                 keyArrayColumn,
-                valueArrayColumn;
-
+                valueArrayColumn,
+                tableName = this.tableForObjectDescriptor(objectDescriptor);
 
             //mapping.rawDataDescriptor =
             rawDataDescriptor = new ObjectDescriptor();
-            rawDataDescriptor.name = this.tableForObjectDescriptor(objectDescriptor);
+            rawDataDescriptor.name = tableName;
             schemaPropertyDescriptors = rawDataDescriptor.propertyDescriptors;
 
             //Cummulate inherited propertyDescriptors:
@@ -3295,7 +3383,7 @@ PostgreSQLService.addClassProperties({
                 }
             }
 
-            this._rawDataDescriptorByObjectDescriptor.set(objectDescriptor,rawDataDescriptor);
+            this._rawDataDescriptorByName.set(tableName,rawDataDescriptor);
             return rawDataDescriptor;
         }
     },
@@ -3986,7 +4074,7 @@ PostgreSQLService.addClassProperties({
                 .then((rawDataOperation) => {
     
                     return new Promise((resolve, reject) => {
-                        //console.log("rawDataOperation: ",rawDataOperation);
+                        console.log("createObjectDescriptorTable rawDataOperation: ",rawDataOperation.sql);
                         this.performRawDataOperation(rawDataOperation, function (err, data) {
     
                             err
@@ -4206,7 +4294,7 @@ PostgreSQLService.addClassProperties({
                         Is it needed to have a unique constraint on the column involved?
                     */
                     if((isPrimaryKey = rawDataPrimaryKeys.includes(iKey)) || (iPropertyDescriptor && iPropertyDescriptor.isUnique)) {
-                        console.log("Insert Unique key: ", iKey);
+                        //console.log("Insert Unique key: ", iKey);
                         (uniqueKeys || (uniqueKeys = [])).push(escapedRecordKeys[i]);
                         if(isPrimaryKey) {
                             escapedPrimaryKeys.push(escapedRecordKeys[i]);
@@ -4267,9 +4355,25 @@ PostgreSQLService.addClassProperties({
                     sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) RETURNING id`;
                 } else {
 
+                    /*
+
+                        In case we may need it, this is how we can get a json object back from each row inserted if needed, if for example some values
+                        were to be generated by the database, we could return it that way, I think.
+
+                        INSERT INTO moe_v1."ManufacturingPlan" ("id","modificationDate","creationDate","originId","name","operationTimeRange","planScope","historicalFlag","launchFlag","databasePlanType","originDataSnapshot","factoryId") 
+                        VALUES ('31952ca3cd7c74cb87a669c2e893e0b7','2025-02-22T07:51:27.356Z','2025-02-22T07:51:27.356Z','{"aptPlanNodeId":2,"aptPlanSeq":23184}','MLP Oakville','[2025-02-22T00:00:00.000Z,infinity]','R','N','Y','P','{"gspas":{"id":{"aptPlanNodeId":2,"aptPlanSeq":23184},"planName":"MLP Oakville","plantNodeId":2,"plantSeq":1306,"targetDate":"2025-02-22","planScope":"R","productionFlag":"N","historicalFlag":"N","launchFlag":"Y","planType":"PLANT","plantKey":{"plantNodeId":2,"plantSeq":1306},"databasePlanType":"P"}}','01952ca3cb127867af33d44991701d9a') 
+                        ON CONFLICT("id") DO NOTHING RETURNING (SELECT to_jsonb(_) FROM (SELECT "id","creationDate","originId","name","operationTimeRange","planScope","historicalFlag","launchFlag","databasePlanType","originDataSnapshot","factoryId") as _)
+
+
+                    */
+
+
+
                     //If there's only a primary key inserted and nothing else...
                     if(escapedRecordKeys.equals(escapedRecordKeys)) {
-                        sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT(${uniqueKeys.join(",")}) DO NOTHING RETURNING id`;
+                        //By leaving ON CONFLICT() empty / unspecified, we let PostgreSQL figure out the constraints to use instead. Lazy... but until we better specify the combination of what is supposed to be unique...
+                        //sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT(${uniqueKeys.join(",")}) DO NOTHING RETURNING id`;
+                        sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT DO NOTHING RETURNING id`;
                     } else {
                         let setRecordKeysValues = recordKeysValues.map((value, index) => {
                             if(escapedPrimaryKeys.contains(value)) {
@@ -4284,7 +4388,9 @@ PostgreSQLService.addClassProperties({
                             ON CONFLICT(email)
                             DO UPDATE SET name = 'John', surname = EXCLUDED.surname;
                         */
-                            sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT(${uniqueKeys.join(",")}) DO UPDATE SET ${setRecordKeysValues.join(",")} RETURNING id`;
+                            //sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT(${uniqueKeys.join(",")}) DO UPDATE SET ${setRecordKeysValues.join(",")} RETURNING id`;
+                           //By leaving ON CONFLICT() empty / unspecified, we let PostgreSQL figure out the constraints to use instead. Lazy... but until we better specify the combination of what is supposed to be unique...
+                            sql = `INSERT INTO ${schemaName}."${tableName}" (${escapedRecordKeys.join(",")}) VALUES (${recordKeysValues.join(",")}) ON CONFLICT DO UPDATE SET ${setRecordKeysValues.join(",")} RETURNING id`;
     
                     }
 
@@ -4569,7 +4675,7 @@ PostgreSQLService.addClassProperties({
                 iRawType = this.mapObjectDescriptorRawPropertyToRawType(objectDescriptor, iKey, mapping, iPropertyDescriptor);
 
                 if (iValue == null) {
-                    iAssignment = `${iKeyEscaped} = NULL`;
+                    iAssignment = `${iKeyEscaped} IS NULL`;
                 } else if((iHasAddedValue = iValue.hasOwnProperty("addedValues")) || (iHasRemovedValues = iValue.hasOwnProperty("removedValues")) ) {
 
                     if (iHasAddedValue) {
@@ -4585,7 +4691,7 @@ PostgreSQLService.addClassProperties({
 
                     iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKeyEscaped, iRawType, updateOperation);
                     //iAssignment = `${iKey} = '${iValue}'`;
-                    iAssignment = `${iKeyEscaped} = ${iMappedValue}`;
+                    iAssignment = `${iKeyEscaped} ${iMappedValue === "NULL"? "is" : "="} ${iMappedValue}`;
                 }
 
                 setRecordKeys[i] = iAssignment;
@@ -4609,7 +4715,8 @@ PostgreSQLService.addClassProperties({
 
 
             sql = `UPDATE  "${schemaName}"."${tableName}" SET ${setRecordKeys.join(",")} ${hasRawExpressionJoinStatements ? "FROM" : ""} ${hasRawExpressionJoinStatements ? rawExpressionJoinStatements.fromClauseQualifiedRightDataSetsString : ""} WHERE (${condition})${hasRawExpressionJoinStatements ? " AND (" : ""}${hasRawExpressionJoinStatements ? rawExpressionJoinStatements.joinAndConditionString : ""}${hasRawExpressionJoinStatements ? ")" : ""}`;
-
+            
+            console.log("_mapUpdateOperationToSQL: sql: "+sql);
 
             return Promise.resolve(sql);
         }
@@ -4825,6 +4932,7 @@ PostgreSQLService.addClassProperties({
             */
             if(this.usePerformTransaction) {
                 var operation = new DataOperation();
+                operation.referrer = createTransactionOperation;
                 operation.referrerId = createTransactionOperation.id;
                 operation.clientId = createTransactionOperation.clientId;
                 //We keep the same
@@ -5571,6 +5679,7 @@ PostgreSQLService.addClassProperties({
 
     handleCommitTransactionOperation: {
         value: function (commitTransactionOperation) {
+            console.debug(this.identifier+" handleCommitTransactionOperation: ",commitTransactionOperation.id);
 
             /*
                 Right now we're receiving this twice for saveChanges happening from inside the Worker.
@@ -5650,27 +5759,42 @@ PostgreSQLService.addClassProperties({
         }
     },
 
+    _rollbackPromiseByOperationsByTransactionOperation: {
+        value: new Map()
+    },
     rollbackRawTransactionWithClientForDataOperation: {
         value: function (client, transactionOperation) {
-            return new Promise((resolve, reject) => {
+            let rollbackPromise = this._rollbackPromiseByOperationsByTransactionOperation.get(transactionOperation);
 
-                client.query('ROLLBACK', err => {
-                    if (err) {
-                        console.error('Error rolling back client', err.stack);
-                        reject(err);
-                        // operation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
-                        //     ? DataOperation.Type.CommitTransactionFailedOperation 
-                        //     : DataOperation.Type.PerformTransactionFailedOperation;
-                        // operation.data = err;
-                        // operation.target.dispatchEvent(operation);
-                        // // // release the client back to the pool
-                        // // done();
-                    } else {
-                        resolve(true);
-                    }
-                });
+            if(!rollbackPromise) {
+                rollbackPromise = new Promise((resolve, reject) => {
 
-            });
+                    client.query('ROLLBACK', err => {
+                        //Remove wether it worked out or not
+                        this._rollbackPromiseByOperationsByTransactionOperation.delete(transactionOperation);
+
+                    
+                        if (err) {
+                            console.error('Error rolling back client', err.stack);
+                            reject(err);
+                            // operation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                            //     ? DataOperation.Type.CommitTransactionFailedOperation 
+                            //     : DataOperation.Type.PerformTransactionFailedOperation;
+                            // operation.data = err;
+                            // operation.target.dispatchEvent(operation);
+                            // // // release the client back to the pool
+                            // // done();
+                        } else {
+                            resolve(true);
+                        }
+                    });
+    
+                });    
+                this._rollbackPromiseByOperationsByTransactionOperation.set(transactionOperation, rollbackPromise);
+            }
+
+            return rollbackPromise;
+
         }
     },
 
@@ -5706,6 +5830,20 @@ PostgreSQLService.addClassProperties({
         value: function (client) {
             return new Promise((resolve, reject) => {
                 client.query('COMMIT', (err, res) => {
+                    if(err) {
+                        reject(err);
+                    } else {
+                        resolve(res);
+                    }
+                });
+            });
+        }
+    },
+
+    abortRawTransactionWithClient: {
+        value: function (client) {
+            return new Promise((resolve, reject) => {
+                client.query('ABORT', (err, res) => {
                     if(err) {
                         reject(err);
                     } else {
@@ -5752,40 +5890,20 @@ PostgreSQLService.addClassProperties({
             })
             .catch((error) => {
 
-                if(ProcessEnv.TIME_PG === "true") {
-                    console.debug(queryTimer.runtimeMsStr());
-                }
+                this.abortRawTransactionWithClient(client)
+                .then((abortResult) => {
+                    if(ProcessEnv.TIME_PG === "true") {
+                        console.debug("abortRawTransactionWithClient: "+queryTimer.runtimeMsStr());
+                    }
+    
+                    this.mapRawDataOperationErrorToDataOperation(rawTransaction, error, transactionOperation);
+                    return this.rollbackRawTransactionWithClientForDataOperation(client, transactionOperation);
+                })
+                .then((resolvedValue) => {
 
-                this.mapRawDataOperationErrorToDataOperation(rawTransaction, error, transactionOperation);
-                this.rollbackRawTransactionWithClientForDataOperation(client, transactionOperation);
-                if(error.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
-                    let objectDescriptor = error.objectDescriptor;
-                    this.createTableForObjectDescriptor(objectDescriptor)
-                    .then((result) => {
-                        this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
-                    })
-                    .catch((error) => {
-                        shouldRetry = false;
-                        console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
-
-                        //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
-                        responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
-                        ? DataOperation.Type.CommitTransactionFailedOperation 
-                        : DataOperation.Type.PerformTransactionFailedOperation
-                        responseOperation.data = error;
-
-                        // release the client back to the pool
-                        done();
-
-                        responseOperation.target.dispatchEvent(responseOperation);
-
-                    });
-
-                } else if(error.name === DataOperationErrorNames.PropertyDescriptorStoreMissing) {
-                    let objectDescriptor = error.objectDescriptor,
-                        propertyDescriptor = error.propertyDescriptor;
-
-                        this.createTableColumnForPropertyDescriptor(propertyDescriptor)
+                    if(error.name === DataOperationErrorNames.ObjectDescriptorStoreMissing) {
+                        let objectDescriptor = error.objectDescriptor;
+                        return this.createTableForObjectDescriptor(objectDescriptor)
                         .then((result) => {
                             this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
                         })
@@ -5806,23 +5924,50 @@ PostgreSQLService.addClassProperties({
     
                         });
     
-                } else {
-                    shouldRetry = false;
-
-                    console.error('Error committing transaction', error.stack)
-                    //responseOperation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation: DataOperation.Type.PerformTransactionFailedOperation;
-                    
-                    responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
-                    ? DataOperation.Type.CommitTransactionFailedOperation 
-                    : DataOperation.Type.PerformTransactionFailedOperation
-                    responseOperation.data = error;
-
-                    // release the client back to the pool
-                    done();
-
-                    responseOperation.target.dispatchEvent(responseOperation);
-                }
-
+                    } else if(error.name === DataOperationErrorNames.PropertyDescriptorStoreMissing) {
+                        let objectDescriptor = error.objectDescriptor,
+                            propertyDescriptor = error.propertyDescriptor;
+    
+                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor)
+                            .then((result) => {
+                                this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
+                            })
+                            .catch((error) => {
+                                shouldRetry = false;
+                                console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
+        
+                                //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
+                                responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                                ? DataOperation.Type.CommitTransactionFailedOperation 
+                                : DataOperation.Type.PerformTransactionFailedOperation
+                                responseOperation.data = error;
+        
+                                // release the client back to the pool
+                                done();
+        
+                                responseOperation.target.dispatchEvent(responseOperation);
+        
+                            });
+        
+                    } else {
+                        shouldRetry = false;
+    
+                        console.error('Error committing transaction', error.stack)
+                        //responseOperation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation: DataOperation.Type.PerformTransactionFailedOperation;
+                        
+                        responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                        ? DataOperation.Type.CommitTransactionFailedOperation 
+                        : DataOperation.Type.PerformTransactionFailedOperation
+                        responseOperation.data = error;
+    
+                        // release the client back to the pool
+                        done();
+    
+                        responseOperation.target.dispatchEvent(responseOperation);
+                    }
+    
+                });
+                
             });
         }
     },
@@ -5869,7 +6014,7 @@ PostgreSQLService.addClassProperties({
     */
     handlePerformTransactionOperation: {
         value: function (performTransactionOperation) {
-            // console.debug("handlePerformTransactionOperation: ",performTransactionOperation, _actAsHandleCommitTransactionOperation);
+            console.debug(this.identifier+" handlePerformTransactionOperation: ",performTransactionOperation.id);
 
             /*
                 Right now we're receiving this twice for saveChanges happening from inside the Worker.
@@ -5886,6 +6031,29 @@ PostgreSQLService.addClassProperties({
                 if(!performTransactionOperation.clientId && performTransactionOperation.target === this && performTransactionOperation.currentTarget !== this) {
                     return;
                 }
+
+            
+            /*
+                NoOp, we bail
+            */
+            if(Object.keys(performTransactionOperation.data.operations).length === 0) {
+                var operation = new DataOperation();
+                operation.referrerId = performTransactionOperation.id;
+                operation.target = performTransactionOperation.target;
+                //Carry on the details needed by the coordinator to dispatch back to client
+                operation.clientId = performTransactionOperation.clientId;
+
+                operation.type = performTransactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                    ? DataOperation.Type.CommitTransactionCompletedOperation 
+                    : DataOperation.Type.PerformTransactionCompletedOperation
+                
+                //Not sure what we could return here.
+                operation.data = [];
+                operation.rawDataService = this;
+                operation.target.dispatchEvent(operation);
+                return;
+            }
+
 
             var self = this;
             this.rawClientPromise.then(() => {
@@ -6052,48 +6220,109 @@ PostgreSQLService.addClassProperties({
 
     // Export promisified versions of the RDSDataService methods
     batchExecuteStatement: {
-        value: function (params, callback) {
-            //this.rawClient.batchExecuteStatement(params, callback);
+        value: function (rawDataOperation, callback) {
+            //this.rawClient.batchExecuteStatement(rawDataOperation, callback);
             return this.rawClientPromise.then(() => {
-                this.rawClient.send(new BatchExecuteStatementCommand(params), callback);
+                this.rawClient.send(new BatchExecuteStatementCommand(rawDataOperation), callback);
             });
         }
     },
 
     beginTransaction: {
-        value: function (params, callback) {
+        value: function (rawDataOperation, callback) {
             if(this.useDataAPI) {
-                    //this.rawClient.beginTransaction(params, callback);
+                    //this.rawClient.beginTransaction(rawDataOperation, callback);
                 return this.rawClientPromise.then(() => {
-                    this.rawClient.send(new BeginTransactionCommand(params), callback);
+                    this.rawClient.send(new BeginTransactionCommand(rawDataOperation), callback);
                 });
             } else {
 
-                params.sql = "BEGIN";
-                return this.sendDirectStatement(params, callback);
+                rawDataOperation.sql = "BEGIN";
+                return this.sendDirectStatement(rawDataOperation, callback);
             }
         }
     },
 
     commitTransaction: {
-        value: function (params, callback) {
+        value: function (rawDataOperation, callback) {
             if(this.useDataAPI) {
-                // this.rawClient.commitTransaction(params, callback);
+                // this.rawClient.commitTransaction(rawDataOperation, callback);
                 return this.rawClientPromise.then(() => {
-                    this.rawClient.send(new CommitTransactionCommand(params), callback);
+                    this.rawClient.send(new CommitTransactionCommand(rawDataOperation), callback);
                 });
             } else {
-                params.sql = "COMMIT";
-                return this.sendDirectStatement(params, callback);
+                rawDataOperation.sql = "COMMIT";
+                return this.sendDirectStatement(rawDataOperation, callback);
             }
         }
     },
 
+    _createDatabaseWithClientForRawDataOperation: {
+        value: function(client, rawDataOperation, callback, done) {
+            if(!client) return;
+
+            client.query(rawDataOperation.sql, undefined, (err, res) => {
+                //Returns the client to  the pool I assume
+                done();
+
+                if (err) {
+                    callback(err);    
+                } else {
+                    callback(null, res);
+                }
+            })
+
+        }
+    },
+
+    connectForRawDataOperation: {
+        value: function (rawDataOperation, callback, dataOperation) {
+            this.clientPool.connectForDataOperation(rawDataOperation, (err, client, done) => {
+                if (err) {
+                    this.mapRawDataOperationErrorToDataOperation(rawDataOperation, err, dataOperation);
+
+                    if(err.name === DataOperationErrorNames.DatabaseMissing) {
+                        let createDatabaseOperation = { ...rawDataOperation },
+                            databaseName = createDatabaseOperation.database;
+
+                        delete createDatabaseOperation.database;
+                        delete createDatabaseOperation.schema;
+                        delete createDatabaseOperation.sql;
+
+
+                        //Remove it temporarily from this.clientPool's connection and we'll add it back after it's created:
+                        delete this.clientPool.connection.database;
+                        delete this.clientPool.rawClientPool.options.database;
+
+                        this.clientPool.connectForDataOperation(createDatabaseOperation, (err, client, done) => {
+                            createDatabaseOperation.sql = `CREATE DATABASE ${databaseName};`;
+
+                            this._createDatabaseWithClientForRawDataOperation(client, createDatabaseOperation, (err, result) => {
+
+                                if(!err) {
+                                    this.clientPool.connection.database = this.clientPool.rawClientPool.options.database = databaseName;
+                                    this.clientPool.connectForDataOperation(rawDataOperation, (err, client, done) => {                    
+                                        callback(err, client, done);
+                                    });    
+                                } else {
+                                    callback(err, client, done);
+                                }
+                            }, done);
+                        });
+                    }
+
+                } else {
+                    callback(err, client, done);
+                }
+            });
+        }
+    },
+
     sendDirectStatement: {
-        value: function (params, callback, dataOperation) {
+        value: function (rawDataOperation, callback, dataOperation) {
             return this.rawClientPromise.then(() => {
                 // callback - checkout a client
-                this.clientPool.connectForDataOperation(dataOperation, (err, client, done) => {
+                this.connectForRawDataOperation(rawDataOperation, (err, client, done) => {
                   if (err) {
                     console.error("sendDirectStatement() readWriteClientPool.connect error: ",err);
                     //call `done()` to release the client back to the pool
@@ -6103,19 +6332,19 @@ PostgreSQLService.addClassProperties({
                   } else if(client) {
 
                     if(ProcessEnv.TIME_PG === "true") {
-                        var queryTimer = new Timer(params.sql);
+                        var queryTimer = new Timer(rawDataOperation.sql);
                         //var queryTimer = new Timer(`${dataOperation.id}-${dataOperation.type}`);
                     }
-                    client.query(params.sql, undefined, (err, res) => {
+                    client.query(rawDataOperation.sql, undefined, (err, res) => {
                         if(ProcessEnv.TIME_PG === "true") {
-                            console.debug("dataOperation:",dataOperation);
-                            console.debug(queryTimer.runtimeMsStr());
+                            // console.debug("dataOperation:",dataOperation);
+                            // console.debug(queryTimer.runtimeMsStr());
                         }
 
                         //Returns the client to  the pool I assume
                         done()
                         if (err) {
-                            if(err.message.includes("already exists") && dataOperation.type === DataOperation.Type.CreateOperation && params.sql.startsWith("CREATE TABLE")) {
+                            if(err.message.includes("already exists") && dataOperation.type === DataOperation.Type.CreateOperation && rawDataOperation.sql.startsWith("CREATE TABLE")) {
                                 callback(null, res);
                             } else {
                                 //console.error("sendDirectStatement() client.query error: ",err);
@@ -6127,7 +6356,7 @@ PostgreSQLService.addClassProperties({
                       })
                   }
 
-                });
+                }, dataOperation);
             }).catch(error => {
                 // let operation = this.responseOperationForReadOperation(dataOperation, error, null, false/*isNotLast*/);
                 // dataOperation.target.dispatchEvent(operation);
@@ -6137,27 +6366,27 @@ PostgreSQLService.addClassProperties({
     },
 
     executeStatement: {
-        value: function executeStatement(params, callback, dataOperation) {
+        value: function executeStatement(rawDataOperation, callback, dataOperation) {
             if(this.useDataAPI) {
-                //this.rawClient.executeStatement(params, callback);
+                //this.rawClient.executeStatement(rawDataOperation, callback);
                 return this.rawClientPromise.then(() => {
-                    this.rawClient.send(new ExecuteStatementCommand(params), callback);
+                    this.rawClient.send(new ExecuteStatementCommand(rawDataOperation), callback);
                 });
             } else {
-                return this.sendDirectStatement(params, callback, dataOperation);
+                return this.sendDirectStatement(rawDataOperation, callback, dataOperation);
             }
         }
     },
     rollbackTransaction: {
-        value: function rollbackTransaction(params, callback) {
+        value: function rollbackTransaction(rawDataOperation, callback) {
             if(this.useDataAPI) {
-                //this.rawClient.rollbackTransaction(params, callback);
+                //this.rawClient.rollbackTransaction(rawDataOperation, callback);
                 return this.rawClientPromise.then(() => {
-                    this.rawClient.send(new RollbackTransactionCommand(params), callback);
+                    this.rawClient.send(new RollbackTransactionCommand(rawDataOperation), callback);
                 });
             } else {
-                params.sql = "ROLLBACK";
-                return this.sendDirectStatement(params, callback);
+                rawDataOperation.sql = "ROLLBACK";
+                return this.sendDirectStatement(rawDataOperation, callback);
             }
         }
     }
