@@ -59,7 +59,7 @@ var parse = require("mod/core/frb/parse"),
 */
 
 function makeBlockStringifier(type) {
-    return function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+    return function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
         /*
             Entering a block means we're entering an array so the syntax inside the block is built for the type of objects right before the block
         */
@@ -75,7 +75,7 @@ function makeBlockStringifier(type) {
             propertyFilteredSyntaxArg0Type,
             result;
 
-        joinToFilteredProperty =  dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+        joinToFilteredProperty =  dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
 
         // if((propertyFilteredSyntaxArg0Type = propertyFilteredSyntax.args[0].type) === "value") {
@@ -134,7 +134,7 @@ function makeBlockStringifier(type) {
         //_propertyNameStringifier added the mapping of
 
 
-        var filterExpressionStringified =  dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+        var filterExpressionStringified =  dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
         //The left side (0) leads to the filter and set the rigt contex, so we remove whatever was added before we leave our scope by the right side (args[1]):
         dataMappings.splice(dataMappingStartLength);
@@ -159,8 +159,8 @@ module.exports = {
 
     makeBlockStringifier: makeBlockStringifier,
 
-    stringifyChild: function stringifyChild(child, scope, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-        var arg = this.stringify(child, scope, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix);
+    stringifyChild: function stringifyChild(child, scope, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+        var arg = this.stringify(child, scope, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor);
         if (!arg) return "this";
         return arg;
     },
@@ -178,7 +178,7 @@ module.exports = {
      * @returns {string}
      */
 
-    stringify: function (syntax, scope, dataMappings, locales, rawExpressionJoinStatements, parent, currentAliasPrefix) {
+    stringify: function (syntax, scope, dataMappings, locales, rawExpressionJoinStatements, parent, currentAliasPrefix, inlinedDataPropertyDescriptor) {
         var stringifiers = this.stringifiers,
             stringifier,
             string,
@@ -193,7 +193,7 @@ module.exports = {
 
         if ((stringifier = stringifiers[syntax.type])) {
             // operators
-            string = stringifier(syntax, scope, parent, this, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix);
+            string = stringifier(syntax, scope, parent, this, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor);
         } else if (syntax.inline) {
             // inline invocations
             string = "&";
@@ -203,7 +203,7 @@ module.exports = {
             args = syntax.args;
             for(i=0, countI = args.length;i<countI;i++) {
                 string += i > 0 ? ", " : "";
-                string += this.stringifyChild(args[i],scope, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix);
+                string += this.stringifyChild(args[i],scope, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor);
             }
             string += ")";
 
@@ -218,11 +218,11 @@ module.exports = {
                 //|| syntax.type === "has") {
                 //string = chain;
 
-                string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix);
+                string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
             } else {
                 //string = this.stringify(syntax.args[0], scope, dataMappings) + "." + chain;
-                string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix);
+                string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, /*parent*/syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
             }
             
             // method invocations
@@ -233,7 +233,7 @@ module.exports = {
             } else {
                 // normal function calls
                 if((stringifier = this.functionStringifiers[syntax.type])) {
-                    chain = stringifier(syntax, scope, parent, this, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix);
+                    chain = stringifier(syntax, scope, parent, this, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                 } else {
                     chain = `${syntax.type}(`;
@@ -266,7 +266,10 @@ module.exports = {
         ) {
             return string;
         } else if(string && string.length) {
-            return `(${string})`;
+            return string;
+            //return `(${string})`;
+            // return dataMapping.currentRawPropertyDescriptor ? string : `(${string})`;
+            // return inlinedDataPropertyDescriptor ? string : `(${string})`;
         } else {
             return string;
         }
@@ -286,7 +289,7 @@ module.exports = {
 
     },
 
-    _stringifyCollectionOperator: function(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, operator, operatorForId) {
+    _stringifyCollectionOperator: function(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor, operator, operatorForId) {
         var chain = "",
             value, propertyName, rawProperty, escapedRawProperty, escapedValue, condition,
             i, countI, args,
@@ -305,8 +308,13 @@ module.exports = {
                 propertyDescriptor = objectDescriptor ? objectDescriptor.propertyDescriptorForName(propertyName) : null;
                 propertyValueDescriptor = propertyDescriptor ? propertyDescriptor._valueDescriptorReference : null;
 
-                if((propertyName === "id" || (propertyDescriptor && propertyDescriptor.cardinality === 1)) && Array.isArray(scope)) {
-                    //propertyName = `ARRAY[${propertyName}]`;
+                /* 
+                    The use of && Array.isArray(scope) fails us when scope is null for example.
+                    If the syntax type is "has", then we know the left side is an array without having to worry about the value
+                */
+                //if((propertyName === "id" || (propertyDescriptor && propertyDescriptor.cardinality === 1)) && Array.isArray(scope)) {
+                if((propertyName === "id" || (propertyDescriptor && propertyDescriptor.cardinality === 1)) && syntax.type === "has") {
+                        //propertyName = `ARRAY[${propertyName}]`;
                     propertyName = `ARRAY[${escapeIdentifier(tableName)}.${escapeIdentifier(propertyName)}]`;
                 }
             }
@@ -403,7 +411,7 @@ module.exports = {
         //     condition = `${operatorForId} ${escapedValue}`
         // } else {
             //condition = `${escapedRawProperty} ${operator} ${escapedValue}`
-            condition = `${operator} ${escapedValue}`
+            condition = `${operator} ${escapedValue}`;
        // }
 
 
@@ -421,9 +429,9 @@ module.exports = {
 
 
     functionStringifiers: {
-        has: function( syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        has: function( syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
 
-            return dataService._stringifyCollectionOperator(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, "@>", "in");
+            return dataService._stringifyCollectionOperator(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor, "@>", "in");
 
             /*
                 The (first) implementation bellow ends up inversing array parameter on the left and property on the right
@@ -502,27 +510,27 @@ module.exports = {
 //             chain += ")";
 //             return chain;
         },
-        overlaps: function _overlaps(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return dataService._stringifyCollectionOperator(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, "&&", "<@");
+        overlaps: function _overlaps(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return dataService._stringifyCollectionOperator(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor, "&&", "<@");
         },
-        intersects: function _intersects(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return dataService._stringifyCollectionOperator(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, "@>", "<@");
+        intersects: function _intersects(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return dataService._stringifyCollectionOperator(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor, "@>", "<@");
         }
 
     },
 
     stringifiers: {
 
-        value: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        value: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             //return '';
             return dataService.mapPropertyDescriptorValueToRawValue(undefined,scope && (scope.value || scope));
         },
 
-        literal: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        literal: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             //New to replace a case in _propertyName
             if(parent.type === "property") {
                 //console.log("literal: parent.type === 'property': "+syntax.value);
-                return dataService.stringifiers._propertyName(syntax.value, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+                return dataService.stringifiers._propertyName(syntax.value, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                 var lastDataMappingIndex = dataMappings.length-1,
                     dataMapping = dataMappings[lastDataMappingIndex],
@@ -540,34 +548,34 @@ module.exports = {
             }
         },
 
-        parameters: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return dataService.mapPropertyDescriptorValueToRawValue(undefined, scope && (scope.parameters || scope));
+        parameters: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return dataService.mapPropertyDescriptorValueToRawValue(/*propertyDescriptor*/undefined, scope && (scope.parameters || scope), /*rawPropertyName*/undefined, /*type*/dataMappings[dataMappings.length-1].currentRawPropertyDescriptor?.valueType);
             //return typeof scope === "string" ? dataService.mapPropertyDescriptorValueToRawValue(undefined,scope) : '$';
         },
 
-        record: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        record: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             return "{" + Object.map(syntax.args, function (value, key) {
                 var string;
                 if (value.type === "value") {
                     string = "this";
                 } else {
-                    string = dataService.stringify(value, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+                    string = dataService.stringify(value, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
                 }
                 return key + ": " + string;
             }).join(", ") + "}";
         },
 
-        tuple: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        tuple: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             return "[" + Object.map(syntax.args, function (value) {
                 if (value.type === "value") {
                     return "this";
                 } else {
-                    return dataService.stringify(value, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+                    return dataService.stringify(value, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
                 }
             }).join(", ") + "]";
         },
 
-        component: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        component: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             var label;
             if (scope && scope.components && syntax.component) {
                 if (scope.components.getObjectLabel) {
@@ -681,11 +689,11 @@ module.exports = {
          * @type {number}
          */
 
-        concat: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        concat: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             console.log("concat syntax:",syntax);
 
         },
-        _propertyName: function (propertyName, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        _propertyName: function (propertyName, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
 
             var lastDataMappingIndex = dataMappings.length-1,
                 dataMapping = dataMappings[lastDataMappingIndex],
@@ -713,8 +721,27 @@ module.exports = {
                 joinCondition,
                 joinType = SQLJoinType.Join,
                 result;
+                // rawDataDescriptor = dataService.rawDataDescriptorForObjectDescriptor(objectDescriptor),
+                // rawPropertyDescriptor = rawDataDescriptor.propertyDescriptorForName(rawPropertyValue);
 
-            if(!propertyDescriptor && !objectRule && !dataMapping.rawDataMappingRuleForPropertyName(propertyName) && !dataMapping.isPrimaryKeyComponent(propertyName)) {
+            /* 
+                propertyName could also be the name of an actual property on objectDescriptor...
+                So we test this first.
+            */
+            //if(inlinedDataPropertyDescriptor?.valueType === "jsonb" && propertyName != inlinedDataPropertyDescriptor.name) {
+            if(dataMapping.currentRawPropertyDescriptor?.valueType === "jsonb" && propertyName != dataMapping.currentRawPropertyDescriptor?.name) {
+
+                /*
+                    If we're inside a jsonb structure we return the value formatted for a jsonb traversal, like:
+
+                    "Table"."column"->'jsonField1'->'nestedJsonField2'->'nestedJsonField3'
+                */
+                return `'${propertyName}'`;
+            }
+            else if(!propertyDescriptor && !objectRule && !dataMapping.rawDataMappingRuleForPropertyName(propertyName) && !dataMapping.isPrimaryKeyComponent(propertyName)) {
+                /*
+                    Not really sure why we'd be there, so give up!
+                */
                 throw "Can't stringify Unknown property `"+propertyName+"', no propertyDescriptor nor objectMappingRules found for objectDescriptor '"+objectDescriptor.name+"' in expression qualifying '"+dataMappings[0].objectDescriptor.name+"'";
             }
 
@@ -1045,7 +1072,7 @@ module.exports = {
 
         },
 
-        property: function _property(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        property: function _property(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             var dataMappingStartLength = dataMappings.length,
                 dataMapping = dataMappings[dataMappingStartLength-1],
                 objectDescriptor = dataMapping.objectDescriptor,
@@ -1057,7 +1084,7 @@ module.exports = {
             if ((syntaxArg0 = syntax.args[0]).type === "value") {
                 if (typeof syntax.args[1].value === "string") {
                     var rawExpressionJoinStatementsSize = rawExpressionJoinStatements ? rawExpressionJoinStatements.size : 0,
-                        result =  _propertyNameStringifier(syntax.args[1].value, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements/*, objectDescriptor*/, currentAliasPrefix);
+                        result =  _propertyNameStringifier(syntax.args[1].value, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements/*, objectDescriptor*/, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                     /*
                         If parent is a property node and we added a join, we shouldn't need a statement in the where clause.
@@ -1127,9 +1154,18 @@ module.exports = {
                         propertyValueSyntax = parent.args[0],
                         objectRule,
                         propertyDescriptor,
-                        type,
+                        type = dataMapping.currentRawPropertyDescriptor?.valueType,
                         escapedValue;
 
+                    /*
+                        If we're deep in the content of a jsonb structure, propertyName may fortuitly 
+                        match a property field on dataMapping's object descriptor.
+
+                        Either we collect what we discovered - the JSONB property and have it passed down here
+                        before it's reset at the end of the equal.
+
+                        Or we'd have to look into parent (syntax) to re-discover outselves, which isn't right.
+                    */
                     propertyName = propertyValueSyntax.args[1].value;
                     objectRule = dataMapping.objectMappingRuleForPropertyName(propertyName);
 
@@ -1144,9 +1180,30 @@ module.exports = {
                     return ":" + syntax.args[1].value;
                 }
             } else if(syntaxArg0.type === "property") {
-                var arg0Result =  dataService.stringify(syntaxArg0, scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix),
+                
+                //Highest level where syntaxArg0.args[0].args[1].value === 'originDataSnapshot'
+                /*
+                    highest level where we might be entering a case of inlined Data.
+                    This could be a jsonb type, or a PG custom type with nested fields.
+                    Both have different syntax, so we're going to pass inlinedDataPropertyDescriptor if that's the case
+
+                */
+                    // if(!inlinedDataPropertyDescriptor) {
+                if(!dataMapping.currentRawPropertyDescriptor) {
+                
+                    let propertyName = syntaxArg0.args?.[0]?.args?.[1].value,
+                        rawPropertyValue = dataMapping.mapObjectPropertyNameToRawPropertyName(propertyName),
+                        rawDataDescriptor = dataService.rawDataDescriptorForObjectDescriptor(objectDescriptor);
+                        // propertyDescriptor = objectDescriptor.propertyDescriptorForName(propertyName),
+
+                    dataMapping.currentRawPropertyDescriptor =  rawDataDescriptor?.propertyDescriptorForName(rawPropertyValue);
+                    inlinedDataPropertyDescriptor = rawDataDescriptor?.propertyDescriptorForName(rawPropertyValue)
+               }
+
+
+                var arg0Result =  dataService.stringify(syntaxArg0, scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor),
                     rawExpressionJoinStatementsSize = rawExpressionJoinStatements ? rawExpressionJoinStatements.size : 0,
-                    arg1Result =  dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+                    arg1Result =  dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                 //console.log("arg0Result: ",arg0Result," arg1Result:",arg1Result);
 
@@ -1156,10 +1213,19 @@ module.exports = {
                 //     dataMappings.aliases.splice(dataMappingStartLength);
                 // }
 
+                // if(inlinedDataPropertyDescriptor) {
+                if(dataMapping.currentRawPropertyDescriptor) {
+                    if(dataMapping.currentRawPropertyDescriptor.valueType === "jsonb") {
+                        return `${arg0Result}->${arg1Result}`
+                    } else {
+                        throw "Inlined Data Property traversal not implemnted besided JSONB"
+                    }
+                }
+
                 /*
                     If parent is a block node and we added a join, we shouldn't need a statement in the where clause.
                 */
-                if(parent.type.endsWith("Block") && rawExpressionJoinStatementsSize < rawExpressionJoinStatements.size) {
+                else if(parent.type.endsWith("Block") && rawExpressionJoinStatementsSize < rawExpressionJoinStatements.size) {
                     return "";
                 } else {
                     return arg1Result;
@@ -1187,7 +1253,7 @@ module.exports = {
 
                 argZeroStringified =  dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, {
                     type: "scope"
-                }, currentAliasPrefix);
+                }, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                 // argOneStringified =  _propertyNameStringifier(syntax.args[1].value, scope, {
                 //     type: "scope"
@@ -1195,7 +1261,7 @@ module.exports = {
                 /*
                     Changes to make multiple joins work. I think passing parent vs {type: "scope"} allows us to know in _propertyNameStringifier that that part is the end before an actual operator.
                 */
-                argOneStringified =  _propertyNameStringifier(syntax.args[1].value, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix);
+                argOneStringified =  _propertyNameStringifier(syntax.args[1].value, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                 lastDataMapping = dataMappings[dataMappings.length - 1];
 
@@ -1236,23 +1302,23 @@ module.exports = {
             } else {
                 return dataService.stringify(syntax.args[0], {
                     type: "scope"
-                }, dataMappings, locales, rawExpressionJoinStatements, scope, currentAliasPrefix) + '[' + dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix) + ']';
+                }, dataMappings, locales, rawExpressionJoinStatements, scope, currentAliasPrefix, inlinedDataPropertyDescriptor) + '[' + dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor) + ']';
             }
         },
 
-        "with": function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            var right = dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, currentAliasPrefix);
-            return dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix) + "." + right;
+        "with": function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            var right = dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
+            return dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor) + "." + right;
         },
 
-        not: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        not: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             if (syntax.args[0].type === "equals") {
                 /*
                     equals now takes care of looking at the parent to see if it's a not and do the rigth thing.
 
                     Otherwise we'd had to parse and do string substitution to fix it after the equals is generated.
                 */
-                return dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+                return dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                 // var left = dataService.stringify(syntax.args[0].args[0], scope, dataMappings, locales, rawExpressionJoinStatements, {type: "equals"}, currentAliasPrefix),
                 //     right = dataService.stringify(syntax.args[0].args[1], scope, dataMappings, locales, rawExpressionJoinStatements, {type: "equals"}, currentAliasPrefix);
@@ -1264,66 +1330,66 @@ module.exports = {
                 // }
 
             } else {
-                return '!' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix)
+                return '!' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor)
             }
         },
 
-        neg: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return '-' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix)
+        neg: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return '-' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor)
         },
 
-        toNumber: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return '+' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix)
+        toNumber: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return '+' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor)
         },
 
         /*
             handling parent might need LATERAL joins ?
         */
 
-        parent: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return '^' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix)
+        parent: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return '^' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor)
         },
 
-        if: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        if: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             return (
-                dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix) + " ? " +
-                dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix) + " : " +
-                dataService.stringify(syntax.args[2], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix)
+                dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor) + " ? " +
+                dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor) + " : " +
+                dataService.stringify(syntax.args[2], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor)
             );
         },
 
-        event: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return syntax.when + " " + syntax.event + " -> " + dataService.stringify(syntax.listener, scope, dataMappings, locales, rawExpressionJoinStatements,undefined, currentAliasPrefix);
+        event: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return syntax.when + " " + syntax.event + " -> " + dataService.stringify(syntax.listener, scope, dataMappings, locales, rawExpressionJoinStatements,undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
         },
 
-        binding: function (arrow, syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        binding: function (arrow, syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
 
-            var header = dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix) + " " + arrow + " " + dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+            var header = dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor) + " " + arrow + " " + dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
             var trailer = "";
 
             var descriptor = syntax.descriptor;
             if (descriptor) {
                 for (var name in descriptor) {
-                    trailer += ", " + name + ": " + dataService.stringify(descriptor[name], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+                    trailer += ", " + name + ": " + dataService.stringify(descriptor[name], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
                 }
             }
 
             return header + trailer;
         },
 
-        bind: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        bind: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             return this.binding("<-", syntax, scope, dataService);
         },
 
-        bind2: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        bind2: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             return this.binding("<->", syntax, scope, dataService);
         },
 
-        assign: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
-            return dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix) + ": " + dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+        assign: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            return dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor) + ": " + dataService.stringify(syntax.args[1], scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
         },
 
-        block: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        block: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             var header = "@" + syntax.label;
             if (syntax.connection) {
                 if (syntax.connection === "prototype") {
@@ -1331,19 +1397,19 @@ module.exports = {
                 } else if (syntax.connection === "object") {
                     header += " : ";
                 }
-                header += dataService.stringify({type: 'literal', value: syntax.module}, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+                header += dataService.stringify({type: 'literal', value: syntax.module}, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
                 if (syntax.exports && syntax.exports.type !== "value") {
-                    header += " " + dataService.stringify(syntax.exports, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+                    header += " " + dataService.stringify(syntax.exports, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
                 }
             }
             return header + " {\n" + syntax.statements.map(function (statement) {
-                return "    " + dataService.stringify(statement, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix) + ";\n";
+                return "    " + dataService.stringify(statement, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor) + ";\n";
             }).join("") + "}\n";
         },
 
-        sheet: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        sheet: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             return "\n" + syntax.blocks.map(function (block) {
-                return dataService.stringify(block, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix);
+                return dataService.stringify(block, scope, dataMappings, locales, rawExpressionJoinStatements, undefined, currentAliasPrefix, inlinedDataPropertyDescriptor);
             }).join("\n") + "\n";
         },
 
@@ -1407,7 +1473,7 @@ module.exports = {
 
         */
 
-        or: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        or: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
 
             //a list of Or becomes a tree of as syntax args go by 2
             //If the value of properties/expression involved is boolean, than we should use "or" operator
@@ -1449,10 +1515,10 @@ module.exports = {
 
                 //dataMappingsAliases[lastDataMappingIndex] = `${leftAliasPrefix}_${tableName}`;
                 // left = dataService.stringify(args[0],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, leftAliasPrefix);
-                left = dataService.stringify(args[0],scope, dataMappings, locales, leftRawExpressionJoinStatements, syntax);
+                left = dataService.stringify(args[0],scope, dataMappings, locales, leftRawExpressionJoinStatements, syntax, inlinedDataPropertyDescriptor);
                 //dataMappingsAliases[lastDataMappingIndex] = `${rightAliasPrefix}_${tableName}`;
                 //right = dataService.stringify(args[1],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, rightAliasPrefix);
-                right = dataService.stringify(args[1],scope, dataMappings, locales, rightRawExpressionJoinStatements, syntax);
+                right = dataService.stringify(args[1],scope, dataMappings, locales, rightRawExpressionJoinStatements, syntax, inlinedDataPropertyDescriptor);
 
                 //Reset
                 //dataMappingsAliases[lastDataMappingIndex] = currentAlias;
@@ -1744,20 +1810,49 @@ module.exports = {
 */
         ,
 
-        equals: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        equals: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
 
             var dataMappingStartLength = dataMappings.length,
+                currentDataMapping = dataMappings[dataMappingStartLength-1],
                 argsZeroValue,
                 argsOneValue;
 
-            argsZeroValue = dataService.stringify(syntax.args[0],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+            //Reset before we start
+            currentDataMapping.currentRawPropertyDescriptor = null;
+            argsZeroValue = dataService.stringify(syntax.args[0],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
+            //console.debug(currentDataMapping.rawDataTypeName+" argsZeroValue: " + argsZeroValue+", currentDataMapping.currentRawPropertyDescriptor?.valueType is ",currentDataMapping.currentRawPropertyDescriptor?.valueType);
             dataMappings.splice(dataMappingStartLength);
             if(dataMappings.aliases) {
                 dataMappings.aliases.splice(dataMappingStartLength);
             }
 
-            argsOneValue = dataService.stringify(syntax.args[1],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+            argsOneValue = dataService.stringify(syntax.args[1],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
+            //console.debug(currentDataMapping.rawDataTypeName+" argsOneValue: " + argsOneValue+", currentDataMapping.currentRawPropertyDescriptor?.valueType is ",currentDataMapping.currentRawPropertyDescriptor?.valueType);
+            
+            if(currentDataMapping.currentRawPropertyDescriptor?.valueType === "jsonb" && !argsOneValue.startsWith("'")) {
+                argsOneValue = `'${argsOneValue}'`
+            }
+
+            /*
+                Not sure this this the best place to do so, but if the left side / argsZeroValue happens to be within a jsonb struture,
+                as tested by the presense of a '->' traversal operator 
+                we need to turn argsOneValue into a jsonb compatible value. If the column name has an embedded converter,
+                we could use it to figure out what type is the last property in the expression, but otherwise, it's arbitraty jsonb
+                so we need to format argsOneValue so it works.
+
+            */
+        //    if(argsZeroValue.includes("->")) {
+        //         if(typeof argsOneValue === "number" || typeof argsOneValue === "boolean") {
+        //             argsOneValue = `'${argsOneValue}'`;
+        //         } else {
+        //             argsOneValue = `'"${argsOneValue}"'`;
+        //         }
+        //    }
+
+            //Reset after we're done
+            currentDataMapping.currentRawPropertyDescriptor = null;
+
 
             dataMappings.splice(dataMappingStartLength);
             if(dataMappings.aliases) {
@@ -1813,7 +1908,7 @@ module.exports = {
 typeToToken.forEach(function (token, type) {
 
     if(typeof module.exports.stringifiers[type] !== "function") {
-        module.exports.stringifiers[type] = function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix) {
+        module.exports.stringifiers[type] = function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
 
             /*
                 TODO: Needs to finish transforming
@@ -1836,8 +1931,8 @@ typeToToken.forEach(function (token, type) {
             var argsZeroDataMappings = dataMappings.slice(),
             argsOneDataMappings = dataMappings.slice();
 
-           var argsZeroValue = dataService.stringify(syntax.args[0],scope, argsZeroDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix),
-                argsOneValue = dataService.stringify(syntax.args[1],scope, argsOneDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+           var argsZeroValue = dataService.stringify(syntax.args[0],scope, argsZeroDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor),
+                argsOneValue = dataService.stringify(syntax.args[1],scope, argsOneDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
            if(argsZeroValue && argsOneValue) {
                 return `${argsZeroValue} ${dataService.mapTokenToRawTokenForValue(token,argsZeroValue)} ${argsOneValue}`;
@@ -1856,7 +1951,7 @@ typeToToken.forEach(function (token, type) {
                     result += " ";
                 }
 
-                iValue = dataService.stringify(args[i],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix);
+                iValue = dataService.stringify(args[i],scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
                 if(i > 0) {
                     result += dataService.mapTokenToRawTokenForValue(token,result);
