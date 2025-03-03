@@ -238,6 +238,12 @@ function escapeString(str, rawType, propertyDescriptor) {
     }
 
     return isJSONB ? JSON.stringify(escaped) : escaped;
+
+    return isJSONB 
+        ? escaped.startsWith('"')
+            ? `'${JSON.stringify(escaped)}'`
+            : JSON.stringify(escaped)
+        : escaped;
 }
 
 module.exports = {
