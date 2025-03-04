@@ -1,0 +1,25 @@
+{
+    "converter_descriptor": {
+        "object": "mod/core/converter/converter.mjson"
+    },
+    "root": {
+        "prototype": "mod/core/meta/module-object-descriptor",
+        "values": {
+            "name": "NumberRangeStringToNumberRangeConverter",
+            "customPrototype": false,
+            "parent": {
+                "@": "converter_descriptor"
+            },
+            "propertyDescriptors": [],
+            "propertyDescriptorGroups": {},
+            "propertyValidationRules": {},
+            "objectDescriptorModule": {
+                "%": "core/converter/number-range-string-to-number-range-converter.mjson"
+            },
+            "exportName": "NumberRangeStringToNumberRangeConverter",
+            "module": {
+                "%": "number-range-string-to-number-range-converter"
+            }
+        }
+    }
+}
