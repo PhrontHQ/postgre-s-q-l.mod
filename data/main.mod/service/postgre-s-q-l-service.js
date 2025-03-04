@@ -4637,7 +4637,16 @@ PostgreSQLService.addClassProperties({
                     iPropertyDescriptor = mapping.propertyDescriptorForRawPropertyName(iKey);
                     iRawType = this.mapObjectDescriptorRawPropertyToRawType(objectDescriptor, iKey, mapping, iPropertyDescriptor);
 
-                    if(iValue === undefined || iValue === null) {
+                    //This code generates the conditions for selection that are in the postgres WHERE clause.
+                    // e.g.: SELECT "foo" FROM bar WHERE (THIS CLAUSE)
+                    // Important note: postgres does not treat 'IS' and '=' the same.
+                    // In the WHERE clause, when we are comparing with NULL, we need to use 'IS', not '='.
+                    //Therefore, any time we are going to be doing a "WHERE BAZ IS NULL", it is importantthat we do "WHERE BAZ IS NULL", and not "WHERE BAZ = NULL"
+                    
+                    // The reason we check for the empty string '' here, is because our implementation in postgres uses NULL to indicate that a value has not been set.
+                    // If a user deletes the value in the UI, we are asked to update the value to an empty string - however, we really want it to be 'not set', as the user is not supplying a value.
+                    // TODO: Should this empty string-<->null logic happen here? IMO The iValue should probably be set to null before being passed in here, which would make this === '' check unnescessary.
+                    if(iValue === undefined || iValue === null || iValue === '' )  {
                         //TODO: this needs to be taken care of in pgstringify as well for criteria. The problem is the operator changes based on value...
                         condition = `${condition}"${tableName}".${escapeIdentifier(iKey)} is ${this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, updateOperation)}`;
                     } else {
@@ -4674,8 +4683,13 @@ PostgreSQLService.addClassProperties({
                 iPropertyDescriptor = mapping.propertyDescriptorForRawPropertyName(iKey);
                 iRawType = this.mapObjectDescriptorRawPropertyToRawType(objectDescriptor, iKey, mapping, iPropertyDescriptor);
 
+
+                // This is in the ASSIGNMENT section of a postgres query, e.g, before WHERE
+                // e.g.: SELECT "foo" FROM bar WHERE (conditions)
+                //         ^^^^^^^^^^^^^^^^^^ this part
+                // because postgres treats 'IS' and '=' differently, we need to use '=' in this section to get desired behavior.
                 if (iValue == null) {
-                    iAssignment = `${iKeyEscaped} IS NULL`;
+                    iAssignment = `${iKeyEscaped} = NULL`;
                 } else if((iHasAddedValue = iValue.hasOwnProperty("addedValues")) || (iHasRemovedValues = iValue.hasOwnProperty("removedValues")) ) {
 
                     if (iHasAddedValue) {
@@ -4691,7 +4705,7 @@ PostgreSQLService.addClassProperties({
 
                     iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKeyEscaped, iRawType, updateOperation);
                     //iAssignment = `${iKey} = '${iValue}'`;
-                    iAssignment = `${iKeyEscaped} ${iMappedValue === "NULL"? "is" : "="} ${iMappedValue}`;
+                    iAssignment = `${iKeyEscaped} ${"="} ${iMappedValue}`;
                 }
 
                 setRecordKeys[i] = iAssignment;
