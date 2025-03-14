@@ -1132,7 +1132,7 @@ PostgreSQLService.addClassProperties({
             } else if(error.name === DataOperationErrorNames.InvalidInput) {
                 //`UPDATE  "schema"."TableName" SET "status" = 'Deployed'   WHERE (...);`
                 //`UPDATE  "moe_v1"."Workstation" SET "status" = 'Deployed'   WHERE ("Workstation"."id" = '01954f95-b04e-75f2-8ce2-de8927b1d407' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Deployed'   WHERE ("Workstation"."id" = '01954f95-b04f-77bf-a8d8-cb01e15dd98e' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Deployed'   WHERE ("Workstation"."id" = '01954f95-b050-7336-bdfa-275a7e0670e1' AND "Workstation"."status" is NULL);\nUPDATE  "m…L);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Configured'   WHERE ("Workstation"."id" = '01954f95-b05a-7e8d-bbb2-8a604f36c080' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Incomplete'   WHERE ("Workstation"."id" = '01954f95-b05f-75e1-92ea-5dde1a3bcdf1' AND "Workstation"."status" is NULL);\nUPDATE  "moe_v1"."Workstation" SET "status" = 'Configured'   WHERE ("Workstation"."id" = '01954f95-b060-7c5a-bf28-c3af6b9b0844' AND "Workstation"."status" is NULL);`
-                objectDescriptorName = this._tableNameFromSQLStatement(rawDataOperation.sql);
+                objectDescriptorName = this._tableNameFromSQLStatement(rawDataOperation, error);
 
             } else if(error.name === DataOperationErrorNames.SyntaxError) {
 
