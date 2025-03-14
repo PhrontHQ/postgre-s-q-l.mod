@@ -786,7 +786,7 @@ module.exports = {
                     until we run into one where a new alias would be needed, but we'll cross that bridge
                     when we have to
                 */
-                if(propertyDescriptorValueDescriptor === objectDescriptor) {
+                if(propertyDescriptorValueDescriptor === objectDescriptor || (propertyDescriptorValueDescriptor && rawExpressionJoinStatements.hasJoinsInvolvingObjectDescriptor(propertyDescriptorValueDescriptor))) {
                     joinType = SQLJoinType.LeftJoin;
                     if(currentAliasPrefix) {
                         propertyDescriptorValueDescriptorAlias = `${currentAliasPrefix}_${rawPropertyValue}${tableName}`;
@@ -1189,14 +1189,16 @@ module.exports = {
 
                 */
                     // if(!inlinedDataPropertyDescriptor) {
-                if(!dataMapping.currentRawPropertyDescriptor) {
                 
                     let propertyName = syntaxArg0.args?.[0]?.args?.[1].value,
                         rawPropertyValue = dataMapping.mapObjectPropertyNameToRawPropertyName(propertyName),
-                        rawDataDescriptor = dataService.rawDataDescriptorForObjectDescriptor(objectDescriptor);
+                        rawDataDescriptor = dataService.rawDataDescriptorForObjectDescriptor(objectDescriptor),
+                        currentRawPropertyDescriptor = rawDataDescriptor?.propertyDescriptorForName(rawPropertyValue);
                         // propertyDescriptor = objectDescriptor.propertyDescriptorForName(propertyName),
 
-                    dataMapping.currentRawPropertyDescriptor =  rawDataDescriptor?.propertyDescriptorForName(rawPropertyValue);
+                if(!dataMapping.currentRawPropertyDescriptor && currentRawPropertyDescriptor?.valueType === "jsonb") {
+ 
+                    dataMapping.currentRawPropertyDescriptor = currentRawPropertyDescriptor;
                     inlinedDataPropertyDescriptor = rawDataDescriptor?.propertyDescriptorForName(rawPropertyValue)
                }
 
@@ -1218,7 +1220,7 @@ module.exports = {
                     if(dataMapping.currentRawPropertyDescriptor.valueType === "jsonb") {
                         return `${arg0Result}->${arg1Result}`
                     } else {
-                        throw "Inlined Data Property traversal not implemnted besided JSONB"
+                        throw "Inlined Data Property traversal not implemnted besides JSONB"
                     }
                 }
 
