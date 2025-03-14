@@ -25,6 +25,8 @@
             this._joinDependencyMap = new Map();
             this._joinIndexMap = new Map();
             this._addOrderedJoins = [];
+            this._joinsByObjectDescriptors = new Map();
+
             return this;
         }
     },
@@ -50,9 +52,35 @@
                 // console.log("------> SQLJoinStatements add "+join.toString() );
                 // console.log("------> this._addOrderedJoins is "+this._addOrderedJoins.join(", ") );
 
+                this._registerJoinByObjectDescriptor(join, join.leftDataSetObjecDescriptor);
+                this._registerJoinByObjectDescriptor(join, join.rightDataSetObjecDescriptor);
             }
          }
      },
+
+     _registerJoinByObjectDescriptor: {
+        value: function(aJoin, objecDescriptor) {
+            let objecDescriptorJoins = this._joinsByObjectDescriptors.get(objecDescriptor);
+            if(!objecDescriptorJoins) {
+                objecDescriptorJoins = new Set();
+                this._joinsByObjectDescriptors.set(objecDescriptor, objecDescriptorJoins);
+            }
+            objecDescriptorJoins.add(aJoin);
+        }
+     },
+
+     _unregisterJoinByObjectDescriptor: {
+        value: function(aJoin, objecDescriptor) {
+            let objecDescriptorJoins = this._joinsByObjectDescriptors.get(objecDescriptor);
+            objecDescriptorJoins.delete(aJoin);
+        }
+    },
+
+    hasJoinsInvolvingObjectDescriptor: {
+        value: function(objecDescriptor) {
+            return !!(this._joinsByObjectDescriptors.get(objecDescriptor)?.size > 0)
+        }
+    },
 
      hasJoinEqualTo: {
         value: function(aJoin) {
@@ -88,6 +116,9 @@
                 this._addOrderedJoins.delete(join);
                 this._joinDependencyMap.delete(join);
                 this._joinIndexMap.delete(join);
+
+                this._unregisterJoinByObjectDescriptor(join, join.leftDataSetObjecDescriptor);
+                this._unregisterJoinByObjectDescriptor(join, join.rightDataSetObjecDescriptor);
             }
         }
     },
