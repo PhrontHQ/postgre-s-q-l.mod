@@ -4690,22 +4690,28 @@ PostgreSQLService.addClassProperties({
                 // because postgres treats 'IS' and '=' differently, we need to use '=' in this section to get desired behavior.
                 if (iValue == null) {
                     iAssignment = `${iKeyEscaped} = NULL`;
-                } else if((iHasAddedValue = iValue.hasOwnProperty("addedValues")) || (iHasRemovedValues = iValue.hasOwnProperty("removedValues")) ) {
+                } else {
+                    iHasAddedValue = iValue.hasOwnProperty("addedValues")
+                    iHasRemovedValues = iValue.hasOwnProperty("removedValues")
+                    if ((iHasAddedValue) && (iHasRemovedValues)) {
+                        var addMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
+                        var removeMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
 
-                    if (iHasAddedValue) {
+                        iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_remove( ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${addMappedValue}),${removeMappedValue})`;
+                    }
+                    else if (iHasAddedValue) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${iMappedValue})`;
                     }
-                    if (iHasRemovedValues) {
+                    else if (iHasRemovedValues) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_remove(${iKeyEscaped}, ${iMappedValue})`;
                     }
-
-                } else {
-
-                    iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKeyEscaped, iRawType, updateOperation);
+                    else if (!iHasAddedValue && !iHasRemovedValues) {
+                        iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKeyEscaped, iRawType, updateOperation);
                     //iAssignment = `${iKey} = '${iValue}'`;
-                    iAssignment = `${iKeyEscaped} ${"="} ${iMappedValue}`;
+                        iAssignment = `${iKeyEscaped} ${"="} ${iMappedValue}`;
+                    }
                 }
 
                 setRecordKeys[i] = iAssignment;
