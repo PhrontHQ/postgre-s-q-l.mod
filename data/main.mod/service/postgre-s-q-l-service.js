@@ -4694,8 +4694,8 @@ PostgreSQLService.addClassProperties({
                     iHasAddedValue = iValue.hasOwnProperty("addedValues")
                     iHasRemovedValues = iValue.hasOwnProperty("removedValues")
                     if ((iHasAddedValue) && (iHasRemovedValues)) {
-                        var addMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
-                        var removeMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
+                        let addMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
+                        let removeMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
 
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_remove( ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${addMappedValue}),${removeMappedValue})`;
                     }
