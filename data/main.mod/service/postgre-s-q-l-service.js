@@ -509,7 +509,7 @@ PostgreSQLService.addClassProperties({
             //     })
             // );
             promises.push(
-                ...this.clientPool.rawClientPromises
+                ...this.connection.clientPool.rawClientPromises
             );
 
             return promises;
