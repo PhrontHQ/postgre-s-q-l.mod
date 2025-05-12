@@ -555,7 +555,7 @@ PostgreSQLService.addClassProperties({
                     this.connection = this.connectionForIdentifier(this.connectionIdentifier);
                 }
                 else if(!this.currentEnvironment.isCloud) {
-                    this.connection = this.connectionForIdentifier(`local-${this.currentEnvironment.stage}`);
+                    this.connection = this.connectionForIdentifier(this.currentEnvironment.stage);
                 } else {
                     this.connection = this.connectionForIdentifier(this.currentEnvironment.stage);
                 }
