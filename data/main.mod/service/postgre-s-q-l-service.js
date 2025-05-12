@@ -2091,7 +2091,7 @@ PostgreSQLService.addClassProperties({
                             return this.createTableColumnForPropertyDescriptor(propertyDescriptor, err.objectDescriptor)
                             .then((result) => {
                                 //Now try again executing the statement
-                                this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
+                                return this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
                             });    
                         } else {
                             reject(err);
@@ -4095,7 +4095,7 @@ PostgreSQLService.addClassProperties({
 
     createObjectPropertyDescriptorColumnForCreateOperation: {
         value: function(createOperation) {
-            let promise = this._createObjectStorePromiseByObject.get(createOperation.data);
+            let promise = this._createObjectStorePromiseByObject.get(`${createOperation.data.objectDescriptor.name}.${createOperation.data.propertyDescriptor.name}`);
 
             if(promise) {
                 return promise;
@@ -4116,7 +4116,7 @@ PostgreSQLService.addClassProperties({
 
                 });
 
-                this._createObjectStorePromiseByObject.set(createOperation.data, promise);
+                this._createObjectStorePromiseByObject.set(`${createOperation.data.objectDescriptor.name}.${createOperation.data.propertyDescriptor.name}`, promise);
                 return promise;
             }
         }
