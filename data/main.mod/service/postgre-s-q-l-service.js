@@ -1897,9 +1897,31 @@ PostgreSQLService.addClassProperties({
                 */
 
                 if(!rawCriteria) {
+                    let criteriaToMap = (rawDataOperation.criteria || criteria),
+                        mappingToUse = (rawDataOperation.mapping || mapping),
+                        dataOperation = rawDataOperation.dataOperation;
+
+                    if(mappingToUse.needsRawDataTypeIdentificationCriteria) {
+                        if(criteriaToMap) {
+                            let includesChildObjectDescriptors = readOperation.data && !readOperation.data.hasOwnProperty("includesChildObjectDescriptors"),
+                                rawDataTypeIdentificationCriteria = mappingToUse.rawDataTypeIdentificationCriteriaForDataOperation(dataOperation );
+                            /*
+                                Needs to pass includesChildObjectDescriptors to mapping.rawDataTypeIdentificationCriteria
+                                If includesChildObjectDescriptors, then if readOperation.target is the top-most object desscriptor stored in that table, 
+                                then there should be no additional criteria needed
+                                However, if readOperation.target is one of the sub types, then a or of the rawDataTypeIdentificationCriteria of each descendent is going to be needed
+                            */
+                            if(includesChildObjectDescriptors && rawDataTypeIdentificationCriteria) {
+                                criteriaToMap = criteriaToMap.and(rawDataTypeIdentificationCriteria);
+                            }
+                        } else {
+                            criteriaToMap = mappingToUse.rawDataTypeIdentificationCriteriaForDataOperation(dataOperation);
+                        }
+                    }
+
                     try {
                         //Prefering rawDataOperation.criteria if we have it, as we attempt to not override the readOperation
-                        rawCriteria = this.mapCriteriaToRawCriteria((rawDataOperation.criteria || criteria), (rawDataOperation.mapping || mapping), operationLocales, (rawExpressionJoinStatements = new SQLJoinStatements())
+                        rawCriteria = this.mapCriteriaToRawCriteria(criteriaToMap, mappingToUse, operationLocales, (rawExpressionJoinStatements = new SQLJoinStatements())
                     );
 
                     } catch (error) {
@@ -1971,7 +1993,7 @@ PostgreSQLService.addClassProperties({
 
             // if(readOperation.target.name === "Event") {
             //     console.log("------------------> readOperation.criteria.expression:",readOperation.criteria.expression);
-            //console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
+            console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
 
             return readOperations;
 
@@ -2088,6 +2110,21 @@ PostgreSQLService.addClassProperties({
                     } else if(err.name === DataOperationErrorNames.PropertyDescriptorStoreMissing) {
                         let propertyDescriptor = err.propertyDescriptor;
                         if(propertyDescriptor) {
+
+                            //Instead of creating a column missing on a read, let's take it out of the statement instead:
+                            // let columnStatement = `"${readOperation.target.name}"."${err.rawPropertyName}"`,
+                            //     statementIndex = rawDataOperation.sql.indexOf(columnStatement),
+                            //     revisedStatememt;
+
+                            // if(rawDataOperation.sql.charAt(statementIndex+columnStatement.length) === ",") {
+                            //     revisedStatememt = rawDataOperation.sql.replace(`${columnStatement},`, "")
+                            //     // revisedStatememt = rawDataOperation.sql.slice(statementIndex, columnStatement.length);
+                            //     rawDataOperation.sql = revisedStatememt;
+                            // } else {
+                            //     console.error('Unable to address error ', err);
+                            //     reject(err);
+                            // }
+                            
                             return this.createTableColumnForPropertyDescriptor(propertyDescriptor, err.objectDescriptor)
                             .then((result) => {
                                 //Now try again executing the statement
@@ -2190,7 +2227,7 @@ PostgreSQLService.addClassProperties({
 
             firstPromise = new Promise(function (resolve, reject) {
 
-                console.log("readOperation "+readOperation.id+" sql: "+rawDataOperation.sql);
+                //console.log("readOperation "+readOperation.id+" sql: "+rawDataOperation.sql);
 
 
                 if(rawDataOperation.sql) {
