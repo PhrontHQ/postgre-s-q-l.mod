@@ -3121,7 +3121,7 @@ PostgreSQLService.addClassProperties({
                 Test if our mapping for objectDescriptor has a rawDataTypeName property specified.
                 We may already have a rawDataDescriptor for it.
             */
-            return this._rawDataDescriptorByName.get(this.tableForObjectDescriptor(objectDescriptor)) || this.buildRawDataDescriptorForObjectDescriptor(objectDescriptor);
+            return this._rawDataDescriptorByName.get(objectDescriptor) || this.buildRawDataDescriptorForObjectDescriptor(objectDescriptor);
         }
     },
 
@@ -3420,7 +3420,7 @@ PostgreSQLService.addClassProperties({
                 }
             }
 
-            this._rawDataDescriptorByName.set(tableName,rawDataDescriptor);
+            this._rawDataDescriptorByName.set(objectDescriptor,rawDataDescriptor);
             return rawDataDescriptor;
         }
     },
