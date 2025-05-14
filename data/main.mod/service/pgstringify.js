@@ -810,7 +810,8 @@ module.exports = {
                 resultJoin.leftDataSet = tableName;
                 resultJoin.leftDataSetObjecDescriptor = objectDescriptor;
                 resultJoin.leftDataSetAlias = leftDataSetAlias;
-                resultJoin.rightDataSet = propertyDescriptorValueDescriptor.name;
+                resultJoin.rightDataSet = dataService.tableForObjectDescriptor(propertyDescriptorValueDescriptor);
+
                 /*
                     needs rightDataSetObjecDescriptor later, would be better to just put propertyDescriptorValueDescriptor in rightDataSet and get the name,
                     but in SQL, a dataSet could be a full statement, for which we don't have an object model, yet...
