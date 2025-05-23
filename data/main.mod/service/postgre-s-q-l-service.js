@@ -5985,7 +5985,7 @@ PostgreSQLService.addClassProperties({
                         let objectDescriptor = error.objectDescriptor,
                             propertyDescriptor = error.propertyDescriptor;
     
-                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor)
+                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor, objectDescriptor)
                             .then((result) => {
                                 this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
                             })
