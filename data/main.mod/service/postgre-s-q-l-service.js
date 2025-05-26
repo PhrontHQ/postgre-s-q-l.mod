@@ -877,6 +877,12 @@ PostgreSQLService.addClassProperties({
                     }
                 }
 
+                /*
+                    TODO: having something like Device's model having "defaultExpressions": ["type.model"]
+                    right now creates an infinite recursion..., which isn't too surprising, 
+                    considering its self-reflecting and is intended to traverse all type relatinships
+                    until it finds one. But this recursion needs to happen in SQL with a Recursive Commone Table Expression
+                */
                 if(defaultExpressionsSyntaxes && defaultExpressionsSyntaxes.length > 0) {
                     //We're introducing the coalesce structure, starting by the column itself:
                     var defaultCoalesceStatements = [result],
