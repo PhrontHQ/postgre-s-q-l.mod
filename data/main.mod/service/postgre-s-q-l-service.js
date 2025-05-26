@@ -1457,6 +1457,48 @@ PostgreSQLService.addClassProperties({
                         */
                         iReadOperationCriteria = iObjectRuleConverter.convertCriteriaForValue(criteria.parameters.id);
 
+                        rawDataOperation.criteria = iReadOperationCriteria;
+
+                        //This is similar to what we do on 1709 -... need to clean up and re-factor to consolidate
+                        if(readExpressionsCount === 1) {
+
+                            rawDataOperation.target = iValueDescriptorReference;
+
+                            let iValueDescriptorReferenceTableName = this.tableForObjectDescriptor(iValueDescriptorReference);
+                            rawDataOperation.objectDescriptor = iValueDescriptorReference;
+                            rawDataOperation.tableName = iValueDescriptorReferenceTableName;
+                            let targetMapping = this.mappingForType(iValueDescriptorReference);
+                            rawDataOperation.mapping = targetMapping;
+
+                                                                    //Set what to fetch to be all columns of the table hosting objects at the end of the relationship
+                            let iValueDescriptorReferenceColumnNames = this.columnNamesForObjectDescriptor(iValueDescriptorReference);
+                            //let escapedRawReadExpressions = iValueDescriptorReferenceColumnNames.map(columnName => this.qualifiedNameForColumnInTable(columnName, iValueDescriptorReferenceTableName));
+                            let targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRules;
+
+                            escapedRawReadExpressions = [];
+
+                            //Adds the primaryKeys to the columns fetched
+                            if(rawDataPrimaryKeys) {
+                                rawDataPrimaryKeys.forEach(item => escapedRawReadExpressions.add(this.qualifiedNameForColumnInTable(item,iValueDescriptorReferenceTableName)));
+                            } else if(primaryKeyPropertyDescriptors) {
+                                primaryKeyPropertyDescriptors.forEach(item => escapedRawReadExpressions.add(this.qualifiedNameForColumnInTable(item.name, iValueDescriptorReferenceTableName)));
+                            }
+
+                            for(let iColumnName in targetRawDataMappingRules) {
+                                let iRule = targetRawDataMappingRules[iColumnName];
+                                escapedRawReadExpressions.push(
+                                    this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iRule.propertyDescriptor,iRule.targetPath, targetMapping, operationLocales, iValueDescriptorReferenceTableName)
+                                )
+                            }
+                            
+                            rawDataOperation.columnNames = escapedRawReadExpressions;
+                            //We're not returning anything from the original objectDescriptor.
+                            //REVIEW - needs to be better structured when we can make it more general
+                            rawReadExpressions = null;
+
+                        }
+
+
                     } else {
                         /*
                             This is the case where we have an arbitrary criteria on objectDescriptor. The best we can do might be to combine that criteria with the criteria to fetch iExpression, which will return all possibles, make sure we add the foreign key if it's not id in rawReadExpressions, and once we've pushed the results client side, since the foreignKey converter now look in memory first, it will find  what it needs.
