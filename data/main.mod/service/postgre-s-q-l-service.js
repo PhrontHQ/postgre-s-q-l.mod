@@ -2173,7 +2173,7 @@ PostgreSQLService.addClassProperties({
                             //     reject(err);
                             // }
                             
-                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor, err.objectDescriptor)
+                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor/*, err.objectDescriptor*/)
                             .then((result) => {
                                 //Now try again executing the statement
                                 return this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
@@ -4130,9 +4130,9 @@ PostgreSQLService.addClassProperties({
 },
 
     createTableColumnForPropertyDescriptor: {
-        value: function(propertyDescriptor, objectDescriptor) {
+        value: function(propertyDescriptor/*, objectDescriptor -- safer to get it from the property descriptor*/) {
             //Inherited from DataService
-            var createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, objectDescriptor);
+            var createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, propertyDescriptor.owner);
             return this.createObjectPropertyDescriptorColumnForCreateOperation(createOperation);
         }
     },
@@ -6033,7 +6033,7 @@ PostgreSQLService.addClassProperties({
                         let objectDescriptor = error.objectDescriptor,
                             propertyDescriptor = error.propertyDescriptor;
     
-                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor, objectDescriptor)
+                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor)
                             .then((result) => {
                                 this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
                             })
