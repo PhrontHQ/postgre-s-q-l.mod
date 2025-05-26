@@ -6057,7 +6057,7 @@ PostgreSQLService.addClassProperties({
                     } else {
                         shouldRetry = false;
     
-                        console.error('Error committing transaction', error.stack)
+                        console.error('Error committing transaction', error, transactionOperation, rawTransaction)
                         //responseOperation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation: DataOperation.Type.PerformTransactionFailedOperation;
                         
                         responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
