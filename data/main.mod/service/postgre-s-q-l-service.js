@@ -4132,8 +4132,7 @@ PostgreSQLService.addClassProperties({
     createTableColumnForPropertyDescriptor: {
         value: function(propertyDescriptor/*, objectDescriptor -- safer to get it from the property descriptor*/) {
             //Inherited from DataService
-            var createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, propertyDescriptor.owner);
-            return this.createObjectPropertyDescriptorColumnForCreateOperation(createOperation);
+            return this.createObjectPropertyDescriptorColumnForCreateOperation(propertyDescriptor);
         }
     },
 
@@ -4179,15 +4178,16 @@ PostgreSQLService.addClassProperties({
     },
 
     createObjectPropertyDescriptorColumnForCreateOperation: {
-        value: function(createOperation) {
-            let promise = this._createObjectStorePromiseByObject.get(`${createOperation.data.objectDescriptor.name}.${createOperation.data.propertyDescriptor.name}`);
+        value: function(propertyDescriptor) {
+            let promise = this._createObjectStorePromiseByObject.get(`${propertyDescriptor.owner.name}.${propertyDescriptor.name}`);
 
             if(promise) {
                 return promise;
             } else {
-                let rawOperation = {};
 
-                let rawDataOperation = this.mapObjectPropertyStoreCreateOperationToRawOperation(createOperation, rawOperation);
+                let rawOperation = {},
+                    createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, propertyDescriptor.owner);
+                    rawDataOperation = this.mapObjectPropertyStoreCreateOperationToRawOperation(createOperation, rawOperation);
     
                 promise = new Promise((resolve, reject) => {
                     //console.log("rawDataOperation: ",rawDataOperation);
