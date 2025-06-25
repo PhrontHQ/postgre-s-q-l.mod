@@ -47,6 +47,7 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     escapeString = pgutils.escapeString,
     pgstringify = require('./pgstringify'),
     parse = require("mod/core/frb/parse"),
+    syntaxProperties = require("mod/core/frb/syntax-properties"),
     path = require("path"),
     fs = require('fs'),
     Timer = require("mod/core/timer").Timer,
@@ -1230,6 +1231,7 @@ PostgreSQLService.addClassProperties({
                     propertyDescriptor,
                     objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation),
                     mapping = this.mappingForType(objectDescriptor);
+
                 error.objectDescriptor = objectDescriptor;
 
                 /* 
@@ -1240,7 +1242,6 @@ PostgreSQLService.addClassProperties({
                         rawPropertyNameEndIndex = error.message.indexOf('"', rawPropertyNameStartindex);
 
                     rawPropertyName = error.message.substring(rawPropertyNameStartindex, rawPropertyNameEndIndex);
-                    propertyDescriptor = mapping.propertyDescriptorForRawPropertyName(rawPropertyName);
                }
                 /* 
                     error.message === 'column Organization.typeId does not exist' 
@@ -1250,19 +1251,48 @@ PostgreSQLService.addClassProperties({
                         rawPropertyNameEndIndex = error.message.indexOf(' ', rawPropertyNameStartindex);
 
                     rawPropertyName = error.message.substring(rawPropertyNameStartindex, rawPropertyNameEndIndex);
-                    propertyDescriptor = mapping.propertyDescriptorForRawPropertyName(rawPropertyName);
                }
 
+                propertyDescriptor = mapping.propertyDescriptorForRawPropertyName(rawPropertyName);
+                if(!propertyDescriptor && this.isObjectDescriptorStoreShared(objectDescriptor)) {
+                    //We need to find objectDescriptor's descendant whose maaping will find propertyDescriptor
+                    let descendantDescriptors = objectDescriptor.descendantDescriptors,
+                        iDescendantMapping;
+                        
+                    for(let i = 0, countI = descendantDescriptors.length; (i <countI); i++) {
+                        iDescendantMapping = this.mappingForType(descendantDescriptors[i]);
+                        if(propertyDescriptor = iDescendantMapping.propertyDescriptorForRawPropertyName(rawPropertyName)) {
+                            //Override what we set earlier
+                            error.objectDescriptor = descendantDescriptors[i];
+                            break;
+                        }
+                    }
+                }
 
                 error.rawPropertyName = rawPropertyName;
                 error.propertyDescriptor = propertyDescriptor;
 
-                console.log("propertyDescriptor: ",propertyDescriptor);
+                console.log(objectDescriptor.name+": propertyDescriptor: ",propertyDescriptor);
             } 
             else if(doesNotExist && isDatabaseError) {
                 error.name = DataOperationErrorNames.DatabaseMissing;
             }
             return error;
+        }
+    },
+
+    _addMappingRawDataTypeIdentificationCriteriaPropertiesToReadExpressionsForCriteriaIfNeeded: {
+        value: function(mapping, readExpressions, criteria) {
+            if(mapping.isObjectStoreShared && (criteria?.name !== 'rawDataPrimaryKeyCriteria')) {
+                let rawDataTypeIdentificationCriteriaProperties = mapping.rawDataTypeIdentificationCriteria.qualifiedProperties;
+
+                for(let i = 0, countI = rawDataTypeIdentificationCriteriaProperties.length; (i < countI); i++) {
+                    //Intitially,  fullModuleId has been used, we'll need to make that configurable later on
+                    if(!readExpressions.includes(rawDataTypeIdentificationCriteriaProperties[i])) {
+                        readExpressions.push(rawDataTypeIdentificationCriteriaProperties[i]);
+                    }
+                }
+            }
         }
     },
 
@@ -1295,6 +1325,7 @@ PostgreSQLService.addClassProperties({
                 // iReadOperationExecutionPromise,
                 // iPreviousReadOperationExecutionPromise,
                 objectDescriptor = readOperation.target,
+                rawDataDescriptor = this.rawDataDescriptorForObjectDescriptor(objectDescriptor),
                 mapping = this.mappingForType(objectDescriptor),
                 readExpressions = readOperation.data?.readExpressions,
                 readExpressionsCount = (readExpressions && readExpressions.length) || 0,
@@ -1325,7 +1356,8 @@ PostgreSQLService.addClassProperties({
                 readOffset = readOperation.data?.readOffset,
                 useDefaultExpressions = readOperation.data?.readExpressions ? false : true,
                 rawCriteria,
-                rawExpressionJoinStatements;
+                rawExpressionJoinStatements,
+                isObjectDescriptorStoreShared = this.isObjectDescriptorStoreShared(readOperation.target);
 
 
             /*
@@ -1352,14 +1384,46 @@ PostgreSQLService.addClassProperties({
             }
 
             /*
-                If we don't have instructions in the readOperation in term of what o retur, we return all known objectDesscriptor's proeprties:
+                If we don't have instructions in the readOperation in term of what to return, we return all known objectDesscriptor's properties:
             */
             if(!readExpressions) {
-                readExpressions = objectDescriptor.propertyDescriptorNames;
+                if(isObjectDescriptorStoreShared) {
+                    //We need to filter out the ones that aren't mapped to the same table as objectDescriptor.
+                    readExpressions = mapping.objectPropertyNamesIncludingStoredDescendants;
+                } else {
+                    readExpressions = objectDescriptor.propertyDescriptorNames;
+                }
+            } 
+            /*
+                Making sure that we have the right readExpression to handle object descriptors' class instances stored in the same table 
+                to tell them appart. We should probably use the qualifiedProperties of 
+            */
+            else if(isObjectDescriptorStoreShared && (criteria?.name !== 'rawDataPrimaryKeyCriteria')) {
+                let rawDataTypeIdentificationCriteriaProperties = mapping.rawDataTypeIdentificationCriteria.qualifiedProperties;
+
+                for(let p = 0, countP = rawDataTypeIdentificationCriteriaProperties.length; (p < countP); p++) {
+                    //Intitially,  fullModuleId has been used, we'll need to make that configurable later on
+                    if(!readExpressions.includes(rawDataTypeIdentificationCriteriaProperties[p])) {
+                        readExpressions.push(rawDataTypeIdentificationCriteriaProperties[p]);
+                    }
+                }
+
+                // let mapping = this.mappingForObjectDescriptor(readOperation.target),
+                //     criteria = mapping.rawDataTypeIdentificationCriteriaForDataOperation(readOperation);
+                //     //Get the values we need to be sure to have in readExpressions to have what we need
+                //     qualifiedProperties = criteria.qualifiedProperties,
+                //     readExpressions = readOperation.data.readExpressions;
+
+                // for(let iQualifiedProperty of qualifiedProperties) {
+                //     if(!readExpressions.includes(iQualifiedProperty)) {
+                //         readExpressions.push(iQualifiedProperty);
+                //     }
+                // }
             }
 
+
             //if (readExpressions) {
-            let i, countI, iExpression, iRawPropertyNames, iObjectRule, iPropertyDescriptor, iValueSchemaDescriptor, iValueDescriptorReference, iValueDescriptorReferenceMapping, iInversePropertyObjectRule, iRawDataMappingRules, iRawDataMappingRulesIterator,
+            let i, iMapping, countI, iExpression, iExpressionSyntax, isComplexExpression = false, iRawPropertyNames, iObjectRule, iPropertyDescriptor, iValueSchemaDescriptor, iValueDescriptorReference, iValueDescriptorReferenceMapping, iInversePropertyObjectRule, iRawDataMappingRules, iRawDataMappingRulesIterator,
             iRawDataMappingRule,
             iRawDataMappingRuleConverter,
             iIsInlineReadExpression, iSourceJoinKey, iInversePropertyDescriptor, iObjectRuleConverter,
@@ -1409,16 +1473,65 @@ PostgreSQLService.addClassProperties({
 
             rawReadExpressions = new Set();
             for(i=0, countI = readExpressions.length;(i<countI); i++) {
+                //Reset as we can now have propertyDescriptors from subclasse mixed in
+                iMapping = mapping;
                 iExpression = readExpressions[i];
-                iRawPropertyNames = mapping.mapObjectPropertyNameToRawPropertyNames(iExpression);
-                iObjectRule = mapping.objectMappingRuleForPropertyName(iExpression);
+                isComplexExpression = false;
+                iRawPropertyNames = iMapping.mapObjectPropertyNameToRawPropertyNames(iExpression);
+                iObjectRule = iMapping.objectMappingRuleForPropertyName(iExpression);
                 iObjectRuleConverter = iObjectRule && iObjectRule.converter;
                 //iPropertyDescriptor = iObjectRule && iObjectRule.propertyDescriptor;
                 iPropertyDescriptor = objectDescriptor.propertyDescriptorNamed(iExpression);
 
-                iRawDataMappingRules = mapping.rawDataMappingRulesForObjectProperty(iExpression);
+                iRawDataMappingRules = iMapping.rawDataMappingRulesForObjectProperty(iExpression);  
+
+                /* It's either a valid complex expression, if it starts by a property that exists, a property from a subtype if isObjectDescriptorStoreShared is true, or a mistake...*/
+                if(!iPropertyDescriptor) {
+
+                    if(isObjectDescriptorStoreShared && !rawDataPrimaryKeys.includes(iExpression) && (iPropertyDescriptor = objectDescriptor.descendantPropertyDescriptorNamed(iExpression))) {
+                        let descendantObjectDescriptor = iPropertyDescriptor.owner,
+                            descendantObjectDescriptorMapping = this.mappingForType(descendantObjectDescriptor);
+
+                        iRawPropertyNames = descendantObjectDescriptorMapping.mapObjectPropertyNameToRawPropertyNames(iExpression);
+                        iObjectRule = descendantObjectDescriptorMapping.objectMappingRuleForPropertyName(iExpression);
+                        iObjectRuleConverter = iObjectRule && iObjectRule.converter;
+
+                        //Override from above
+                        iRawDataMappingRules = descendantObjectDescriptorMapping.rawDataMappingRulesForObjectProperty(iExpression);
+
+                        //Override for the rest of the loop
+                        iMapping = descendantObjectDescriptorMapping
+
+                    } else {
+                        /* 
+                            we're not supporting read expressions that are more than just a property name yet but do if they're in a propertyDescriptor's defiinition.
+                            So let's get closer as it will help us deal with this as well.
+                        */
+                        iExpressionSyntax = parse(iExpression);
+                        let iExpressionSyntaxProperties = syntaxProperties(iExpressionSyntax);
+                        if(!iExpressionSyntaxProperties || (iExpressionSyntaxProperties.length === 1 && iExpressionSyntaxProperties[0] === iExpression)) {
+                            console.warn("Ignoring readExpressions '"+iExpression+"' as it's not a known property of "+objectDescriptor.name);
+                            continue;
+                        } else {
+                            //We need to handle it where we do iPropertyDescriptor's definition further down here
+                            isComplexExpression = true;
+                        }
+                    }
+                }
+                
                 iRawDataMappingRulesIterator = iRawDataMappingRules && iRawDataMappingRules.values();
-                iValueDescriptorReference = iObjectRule && iObjectRule.propertyDescriptor._valueDescriptorReference,
+
+                /*
+                    If a relationship is overriden in an ObjectDescriptor because the destination is different from what is inherited,
+                    BUT the mapping for the subclass doesn't override as it would be the same thing, 
+                    then iPropertyDescriptor and iObjectRule.propertyDescriptor are different.
+
+                    iPropertyDescriptor's _valueDescriptorReference is the correct desstination
+                    where iObjectRule.propertyDescriptor._valueDescriptorReference is the relationship destination as set in the parent object descriptor.
+                */
+                iValueDescriptorReference = iObjectRule && iObjectRule.propertyDescriptor._valueDescriptorReference && iObjectRule.propertyDescriptor._valueDescriptorReference === iPropertyDescriptor._valueDescriptorReference 
+                    ? iObjectRule.propertyDescriptor._valueDescriptorReference 
+                    : iPropertyDescriptor._valueDescriptorReference,
                 iValueDescriptorReferenceMapping = iValueDescriptorReference && this.mappingForType(iValueDescriptorReference);
 
                 if(iValueDescriptorReference) {
@@ -1448,7 +1561,7 @@ PostgreSQLService.addClassProperties({
 
                     //Take care of single raw expressions typically sent by service itself for builing nested select statement, like for the from clause for defaults
                     if(countI === 1 && columnNames.has(iExpression)) {
-                        escapedRawReadExpressions.add(this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iPropertyDescriptor,iExpression, mapping, operationLocales, tableName));
+                        escapedRawReadExpressions.add(this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iPropertyDescriptor,iExpression, iMapping, operationLocales, tableName));
                     }
                     //console.log("A - "+objectDescriptor+" - "+ iExpression);
                     else if(isReadOperationForSingleObject && !iIsInlineReadExpression) {
@@ -1567,9 +1680,11 @@ PostgreSQLService.addClassProperties({
                             */
                             //console.error("Can't fulfill fetching read expression '"+iExpression+"'. No inverse property descriptor was found for '"+objectDescriptor.name+"', '"+iExpression+"' with inversePropertyName '"+iPropertyDescriptor.inversePropertyName+"'");
 
-                            if(iPropertyDescriptor && iPropertyDescriptor.definition) {
+                            if(iPropertyDescriptor && (iPropertyDescriptor.definition /* UNCOMMENT ME AND FINISH THE JOB TO HANDLE: || isComplexExpression === true*/)) {
 
                                 /*
+                                    TODO / FIXME!!! : if iExpression is a complex expression, then it is similar to a propertyDescriptor's definition. So this needs to be adapted to address that as well
+                                    
                                     We land here for an read expression that's a propertyDescriptor, but has a definition.
                                     There may also be a criteria involved if we're resolving the property of an object.
 
@@ -1585,7 +1700,7 @@ PostgreSQLService.addClassProperties({
 
 
                                 var aSQLJoinStatements = new SQLJoinStatements(),
-                                    aRawExpression = this.stringify(combinedCriteria.syntax, combinedCriteria.parameters, [mapping], operationLocales, aSQLJoinStatements),
+                                    aRawExpression = this.stringify(combinedCriteria.syntax, combinedCriteria.parameters, [iMapping], operationLocales, aSQLJoinStatements),
                                     aSQLJoinStatementsOrderedJoins = aSQLJoinStatements.orderedJoins(),
                                     lastJoin = aSQLJoinStatementsOrderedJoins && aSQLJoinStatementsOrderedJoins[aSQLJoinStatementsOrderedJoins.length-1],
                                     firstJoin = aSQLJoinStatementsOrderedJoins && aSQLJoinStatementsOrderedJoins[0],
@@ -1680,7 +1795,7 @@ PostgreSQLService.addClassProperties({
 
                         if(columnNames.has(iTargetPath)) {
                             //anEscapedExpression = this.mapRawReadExpressionToSelectExpression(iTargetPath, iRawDataMappingRule.propertyDescriptor, mapping, operationLocales, tableName);
-                            anEscapedExpression = this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iPropertyDescriptor,iTargetPath, mapping, operationLocales, tableName);
+                            anEscapedExpression = this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iPropertyDescriptor,iTargetPath, iMapping, operationLocales, tableName);
 
 
 
@@ -1765,7 +1880,17 @@ PostgreSQLService.addClassProperties({
                                         //Set what to fetch to be all columns of the table hosting objects at the end of the relationship
                                         let iValueDescriptorReferenceColumnNames = this.columnNamesForObjectDescriptor(iValueDescriptorReference);
                                         //let escapedRawReadExpressions = iValueDescriptorReferenceColumnNames.map(columnName => this.qualifiedNameForColumnInTable(columnName, iValueDescriptorReferenceTableName));
-                                        let targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRules;
+                                        let targetRawDataMappingRules;
+
+                                        //We need to add rawDataMappingRules of all descendants
+                                        if(this.isObjectDescriptorStoreShared(rawDataOperation.objectDescriptor)/* && iTargetPath !== "hostDeviceConnections"*/) {
+                                            console.warn("?????????????? "+rawDataOperation.objectDescriptor.name + " ObjectDescriptor Store Shared - "+iTargetPath);
+                                            targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRulesIncludingStoredDescendants
+                                        } else {
+                                            console.warn("?????????????? "+rawDataOperation.objectDescriptor.name + " ObjectDescriptor Store NOT Shared - "+iTargetPath);
+
+                                            targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRules
+                                        }
 
                                         escapedRawReadExpressions = [];
 
@@ -1808,7 +1933,7 @@ PostgreSQLService.addClassProperties({
                                     */
                                     if(readOperation.hints?.snapshot) {
                                         //Use the rule.
-                                        let mappingScope = mapping._scope.nest(readOperation);
+                                        let mappingScope = iMapping._scope.nest(readOperation);
                                         mappingScope = mappingScope.nest(readOperation.hints?.snapshot);
             
                                         rawDataOperation.criteria = iRawDataMappingRule.reverter.convertCriteriaForValue(iObjectRule.expression(mappingScope));
@@ -2111,7 +2236,7 @@ PostgreSQLService.addClassProperties({
             */
             if(!this.handlesType(readOperation.target)) {
                 return;
-            }
+            }            
 
             // if(readOperation.target.name === "Workstation" && readOperation.data.readExpressions[0] === "parent") {
             //     console.log(">>>>>>>>>>>>>>>>>>> handleReadOperation id " + readOperation.id);
@@ -2173,7 +2298,7 @@ PostgreSQLService.addClassProperties({
                             //     reject(err);
                             // }
                             
-                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor/*, err.objectDescriptor*/)
+                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor, err.objectDescriptor)
                             .then((result) => {
                                 //Now try again executing the statement
                                 return this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
@@ -2194,6 +2319,9 @@ PostgreSQLService.addClassProperties({
                 if(err) {
                     // reject(operation);
                     err.readOperationExecutedCount = readOperationExecutedCount;
+
+                    console.error("handleReadOperation Error: readOperation:", readOperation, "rawDataOperation: ", rawDataOperation, "error: ", err);
+
                     reject(err);
                 } else {
 
@@ -2933,6 +3061,16 @@ PostgreSQLService.addClassProperties({
                             return `${this.connection.schema}.crypt(${escapedValue}, ${rawPropertyName})`;
                         }
                     } else {
+                        if(propertyDescriptor && propertyDescriptor.isLocalizable) {
+                            let operationLocales = dataOperation.locales;
+
+                            //We need to put the value in the right json structure, if it's a string + operationLocales
+                            //If value is an object, it means it's the full localized string structure involving multiple languages and we shouldnt do anything
+                            if((operationLocales.length === 1) && (typeof value !== "object")) {
+                                escapedValue = `'{"${operationLocales[0].language}":{"${operationLocales[0].region}":${escapedValue}}}'`;
+                            }
+
+                        } 
                         return escapedValue;
                     }
                 }
@@ -3186,10 +3324,10 @@ PostgreSQLService.addClassProperties({
 
     buildRawDataDescriptorForObjectDescriptor: {
         value: function(objectDescriptor) {
-            var mapping = objectDescriptor && this.mappingForType(objectDescriptor);
+            var objectDescriptorMapping = objectDescriptor && this.mappingForType(objectDescriptor);
 
             /* For example for Date or Map */
-            if(!mapping) {
+            if(!objectDescriptorMapping) {
                 return null;
             }
 
@@ -3200,6 +3338,7 @@ PostgreSQLService.addClassProperties({
                 colunmns = new Set(),
                 i, iSchemaPropertyDescriptor, iPropertyDescriptor, iPropertyDescriptorName, iIndexType, iPropertyDescriptorValueDescriptor, iDescendantDescriptors, iObjectRule, iRule,
                 isMapPropertyDescriptor,
+                mapping,
                 converterforeignDescriptorMappings,
                 iObjectRuleSourcePathSyntax,
                 iPropertyDescriptorRawProperties,
@@ -3208,20 +3347,38 @@ PostgreSQLService.addClassProperties({
                 columnType,
                 keyArrayColumn,
                 valueArrayColumn,
-                tableName = this.tableForObjectDescriptor(objectDescriptor);
+                tableName = this.tableForObjectDescriptor(objectDescriptor),
+                isObjectDescriptorStoreShared = false,
+                descendantPropertyDescriptorsByName,
+                objectStoreName = objectDescriptorMapping.rawDataTypeName;//Should be equal to tableName...
 
             //mapping.rawDataDescriptor =
             rawDataDescriptor = new ObjectDescriptor();
             rawDataDescriptor.name = tableName;
             schemaPropertyDescriptors = rawDataDescriptor.propertyDescriptors;
 
+            //Benoit 6/5/25: objectDescriptor.propertyDescriptors already contains inherited ones
             //Cummulate inherited propertyDescriptors:
-            parentDescriptor = objectDescriptor.parent;
-            while ((parentDescriptor)) {
-                if (parentDescriptor.propertyDescriptors && propertyDescriptors.length) {
-                    propertyDescriptors.concat(parentDescriptor.propertyDescriptors);
+            // parentDescriptor = objectDescriptor.parent;
+            // while ((parentDescriptor)) {
+            //     if (parentDescriptor.propertyDescriptors && propertyDescriptors.length) {
+            //         propertyDescriptors.concat(parentDescriptor.propertyDescriptors);
+            //     }
+            //     parentDescriptor = parentDescriptor.parent;
+            // }
+
+            //If an objectDescriptor's ObjectStore hosts subclasses, we need to add their propertyDescriptors as well:
+            if((isObjectDescriptorStoreShared = this.isObjectDescriptorStoreShared(objectDescriptor))) {
+                /*
+                    It's possible, but unfortunate, for 2 subclasses to independently have a property descriptor with the same name, but different type.
+                    The only way to solve that would be to alias the columns, like `${objectDescriptorName}_${aPropertyDescriptor.name}`
+                    But we would have to dynamically change the mappings... If we were creating it, then it would be fine, but as long as we, humans, do,
+                    it's on us.
+                */
+                if(objectDescriptor.descendantPropertyDescriptors) {
+                    propertyDescriptors.push(...objectDescriptor.descendantPropertyDescriptors);
+                    descendantPropertyDescriptorsByName = objectDescriptor.descendantPropertyDescriptorsByName;
                 }
-                parentDescriptor = parentDescriptor.parent;
             }
 
             //Before we start the loop, we add the primaryKey:
@@ -3234,6 +3391,12 @@ PostgreSQLService.addClassProperties({
 
             for (i = propertyDescriptors.length - 1; (i > -1); i--) {
                 iPropertyDescriptor = propertyDescriptors[i];
+                mapping = !isObjectDescriptorStoreShared ? objectDescriptorMapping : this.mappingForType(iPropertyDescriptor.owner);
+
+                //Descendant, but stored separately, pass
+                if(!mapping || (isObjectDescriptorStoreShared && (descendantPropertyDescriptorsByName.get(iPropertyDescriptor.name) === iPropertyDescriptor) && (mapping.rawDataTypeName !== objectStoreName))) {
+                    continue;
+                } 
 
                 //If iPropertyDescriptor isDerived, it has an expresssion
                 //that make it dynamic based on other properties, it doesn't
@@ -4097,42 +4260,51 @@ PostgreSQLService.addClassProperties({
      * @argument {DataOperation} dataOperation - The dataOperation to execute
   `  * @returns {Promise} - The Promise for the execution of the operation
      */
-  handleObjectPropertyStoreCreateOperation: {
-    value: function (createOperation) {
-        var self = this;
+    handleObjectPropertyStoreCreateOperation: {
+        value: function (createOperation) {
+            var self = this;
 
-        var operation = new DataOperation();
+            var operation = new DataOperation();
 
-        operation.target = createOperation.target;
-        operation.referrerId = createOperation.id;
-        operation.clientId = createOperation.clientId;
-        operation.rawDataService = this;
+            operation.target = createOperation.target;
+            operation.referrerId = createOperation.id;
+            operation.clientId = createOperation.clientId;
+            operation.rawDataService = this;
 
-        this.createObjectPropertyColumnForCreateOperation(createOperation)
-        .then((data)=> {
-            // successful response
-            operation.type = DataOperation.Type.CreateCompletedOperation;
-            operation.data = createOperation.data;
-        })
-        .catch((error) => {
-            // an error occurred
-            console.log(error, error.stack, rawDataOperation);
-            operation.type = DataOperation.Type.CreateFailedOperation;
-            error.objectDescriptor = createOperation.data;
-            //Should the data be the error?
-            operation.data = error;
-        })
-        .finally(() => {
-            operation.target.dispatchEvent(operation);
-        });
+            this.createObjectPropertyColumnForCreateOperation(createOperation)
+            .then((data)=> {
+                // successful response
+                operation.type = DataOperation.Type.CreateCompletedOperation;
+                operation.data = createOperation.data;
+            })
+            .catch((error) => {
+                // an error occurred
+                console.log(error, error.stack, rawDataOperation);
+                operation.type = DataOperation.Type.CreateFailedOperation;
+                error.objectDescriptor = createOperation.data;
+                //Should the data be the error?
+                operation.data = error;
+            })
+            .finally(() => {
+                operation.target.dispatchEvent(operation);
+            });
 
-    }
-},
+        }
+    },
 
+    /**
+     * If an table is missing a column for a proeperty that's inherited, defined on a parent object descriptor,
+     * then propertyDescriptor.owner will be that object descriptor, but the table where it's missing will be
+     * objectDescriptor's assigned table.
+     *
+     * @method
+     * @argument {DataOperation} dataOperation - The dataOperation to execute
+  `  * @returns {Promise} - The Promise for the execution of the operation
+     */
     createTableColumnForPropertyDescriptor: {
-        value: function(propertyDescriptor/*, objectDescriptor -- safer to get it from the property descriptor*/) {
+        value: function(propertyDescriptor, objectDescriptor) {
             //Inherited from DataService
-            return this.createObjectPropertyDescriptorColumnForCreateOperation(propertyDescriptor);
+            return this.createObjectPropertyDescriptorColumnForCreateOperation(propertyDescriptor, objectDescriptor);
         }
     },
 
@@ -4178,15 +4350,15 @@ PostgreSQLService.addClassProperties({
     },
 
     createObjectPropertyDescriptorColumnForCreateOperation: {
-        value: function(propertyDescriptor) {
-            let promise = this._createObjectStorePromiseByObject.get(`${propertyDescriptor.owner.name}.${propertyDescriptor.name}`);
+        value: function(propertyDescriptor, objectDescriptor = propertyDescriptor.owner) {
+            let promise = this._createObjectStorePromiseByObject.get(`${objectDescriptor.name}.${propertyDescriptor.name}`);
 
             if(promise) {
                 return promise;
             } else {
 
                 let rawOperation = {},
-                    createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, propertyDescriptor.owner);
+                    createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, objectDescriptor);
                     rawDataOperation = this.mapObjectPropertyStoreCreateOperationToRawOperation(createOperation, rawOperation);
     
                 promise = new Promise((resolve, reject) => {
@@ -4387,34 +4559,36 @@ PostgreSQLService.addClassProperties({
                     }
 
                     //In that case we need to produce json to be stored in jsonb
-                    if(iPropertyDescriptor && iPropertyDescriptor.isLocalizable) {
-                        //We need to put the value in the right json structure.
-                        if(operationLocales.length === 1) {
+                    // if(iPropertyDescriptor && iPropertyDescriptor.isLocalizable) {
+                    //     //We need to put the value in the right json structure.
+                    //     if(operationLocales.length === 1) {
 
-                            // iMappedValue = {};
-                            // language = operationLocales[0].language;
-                            // region = operationLocales[0].region;
-                            // iMappedValue[language] = {}
-                            // iMappedValue[language][region] = iValue;
-                            // iMappedValue = JSON.stringify(iMappedValue);
+                    //         // iMappedValue = {};
+                    //         // language = operationLocales[0].language;
+                    //         // region = operationLocales[0].region;
+                    //         // iMappedValue[language] = {}
+                    //         // iMappedValue[language][region] = iValue;
+                    //         // iMappedValue = JSON.stringify(iMappedValue);
 
-                            iMappedValue = self.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, createOperation);
-                            if(typeof iValue !== "object") {
-                                language = operationLocales[0].language;
-                                region = operationLocales[0].region;
+                    //         iMappedValue = self.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, createOperation);
+                    //         if(typeof iValue !== "object") {
+                    //             language = operationLocales[0].language;
+                    //             region = operationLocales[0].region;
 
-                                iMappedValue = `'{"${language}":{"${region}":${iMappedValue}}}'`;
-                            }
-                        }
-                        else if(operationLocales.length > 1) {
-                            //if more than one locales, then it's a multi-locale structure
-                            //We should already have a json
-                            iMappedValue = self.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, createOperation);
-                        }
+                    //             iMappedValue = `'{"${language}":{"${region}":${iMappedValue}}}'`;
+                    //         }
+                    //     }
+                    //     else if(operationLocales.length > 1) {
+                    //         //if more than one locales, then it's a multi-locale structure
+                    //         //We should already have a json
+                    //         iMappedValue = self.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, createOperation);
+                    //     }
 
-                    } else {
+                    // } else {
                         iMappedValue = self.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, createOperation);
-                    }
+                    // }
+
+                    
                     // if(iValue == null || iValue == "") {
                     //   iValue = 'NULL';
                     // }
@@ -5784,7 +5958,7 @@ PostgreSQLService.addClassProperties({
 
     handleCommitTransactionOperation: {
         value: function (commitTransactionOperation) {
-            console.debug(this.identifier+" handleCommitTransactionOperation: ",commitTransactionOperation.id);
+            console.debug(this.identifier+" handleCommitTransactionOperation: id: ",commitTransactionOperation.id+ ", referrer "+ (operation.referrer?.id || operation.referrerId));
 
             /*
                 Right now we're receiving this twice for saveChanges happening from inside the Worker.
@@ -6033,7 +6207,7 @@ PostgreSQLService.addClassProperties({
                         let objectDescriptor = error.objectDescriptor,
                             propertyDescriptor = error.propertyDescriptor;
     
-                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor)
+                            return this.createTableColumnForPropertyDescriptor(propertyDescriptor, objectDescriptor)
                             .then((result) => {
                                 this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
                             })

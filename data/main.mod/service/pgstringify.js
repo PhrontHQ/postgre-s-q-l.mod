@@ -73,10 +73,29 @@ function makeBlockStringifier(type) {
             filteredPropertyValueDescriptor,
             joinToFilteredProperty,
             propertyFilteredSyntaxArg0Type,
+            shouldNestScope = (dataMappings.length > dataMappings.dataMappingScopes.length),
+            dataMappingScopesIndex = dataMappings.length - 1,
             result;
+
+            // if(syntax.type === "filterBlock") {
+            //     console.debug("=====================> filterBlock for dataMappings " + dataMappings.map((value) => value.objectDescriptor.name).join(","));
+            // }
+
+        //if(shouldNestScope) {
+            // dataMappings.dataMappingScopes.push(parentDataMapping);
+            //dataMappings.dataMappingScopes[dataMappings.length - 1] = shouldNestScope ? parentDataMapping : undefined;
+            //For the parent of the filter
+            dataMappings.dataMappingScopes[dataMappingScopesIndex] = parentDataMapping;
+            // console.debug("---------------------> dataMappingScopes: added "+parentDataMapping.objectDescriptor.name+" at index "+dataMappingScopesIndex);
+        //}
 
         joinToFilteredProperty =  dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
 
+        if(dataMappings.length > dataMappingStartLength) {
+            dataMappings.dataMappingScopes[dataMappings.length - 1] = dataMappings[dataMappings.length - 1];
+            // console.debug("---------------------> dataMappingScopes: added "+ dataMappings[dataMappings.length - 1].objectDescriptor.name+" at index "+ (dataMappings.length - 1));
+
+        }
 
         // if((propertyFilteredSyntaxArg0Type = propertyFilteredSyntax.args[0].type) === "value") {
 
@@ -142,6 +161,16 @@ function makeBlockStringifier(type) {
             dataMappings.aliases.splice(dataMappingStartLength);
         }
 
+        // if(shouldNestScope) {
+            //dataMappings.dataMappingScopes.pop();
+            dataMappings.dataMappingScopes[dataMappingScopesIndex] = undefined;
+            //console.debug("<--------------------- dataMappingScopes: set "+parentDataMapping.objectDescriptor.name+" at index "+dataMappingScopesIndex +" to undefined");
+
+        // }
+        if(dataMappings.dataMappingScopes) {
+            dataMappings.dataMappingScopes.splice(dataMappingStartLength);
+        }
+
         result = ` ${joinToFilteredProperty} ${filterExpressionStringified}`;
 
         return result;
@@ -190,6 +219,16 @@ module.exports = {
         if(!dataMappings.aliases) {
             dataMappings.aliases = [];
         }
+
+        /*
+            This is used to represent the points where we change scope so we can construct the proper SQL
+            when the parent operator (^) is used
+        */
+        if(!dataMappings.dataMappingScopes) {
+            //dataMappings.dataMappingScopes = [dataMappings[0]];
+            dataMappings.dataMappingScopes = [];
+        }
+
 
         if ((stringifier = stringifiers[syntax.type])) {
             // operators
@@ -371,7 +410,7 @@ module.exports = {
                 propertyDescriptor = objectDescriptor ? objectDescriptor.propertyDescriptorForName(propertyName) : null;
                 propertyValueDescriptor = propertyDescriptor ? propertyDescriptor._valueDescriptorReference : null;
 
-                if((propertyName === "id" || (propertyDescriptor && propertyDescriptor.cardinality === 1)) && Array.isArray(value)) {
+                if((propertyName === "id" || (propertyDescriptor && propertyDescriptor.cardinality === 1)) && /*Array.isArray(value)*/operator === "@>") {
                     // propertyName = `ARRAY[${propertyName}]`;
                     propertyName = `ARRAY[${escapeIdentifier(tableName)}.${escapeIdentifier(propertyName)}]`;
 
@@ -390,7 +429,7 @@ module.exports = {
                 value = [value];
             }
 
-            if((propertyName === "id" || (propertyDescriptor && propertyDescriptor.cardinality === 1)) && Array.isArray(scope)) {
+            if((propertyName === "id" || (propertyDescriptor && propertyDescriptor.cardinality === 1)) && /*Array.isArray(value)*/operator === "@>") {
                 //propertyName = `ARRAY[${propertyName}]`;
                 propertyName = `ARRAY[${escapeIdentifier(tableName)}.${escapeIdentifier(propertyName)}]`;
                 escapedValue = dataMapping.mapObjectPropertyNameToRawPropertyName(propertyName);
@@ -411,7 +450,16 @@ module.exports = {
         //     condition = `${operatorForId} ${escapedValue}`
         // } else {
             //condition = `${escapedRawProperty} ${operator} ${escapedValue}`
-            condition = `${operator} ${escapedValue}`;
+            if(operator === "@>") {
+                if(dataMapping.currentRawPropertyDescriptor?.valueType === "jsonb" ) {
+                    operator = "?&";
+                    condition = `${operator} ${escapedValue}`;
+                } else {
+                    condition = `${operator} ${escapedValue}`;
+                }
+            } else {
+                condition = `${operator} ${escapedValue}`;
+            }
        // }
 
 
@@ -516,6 +564,22 @@ module.exports = {
         intersects: function _intersects(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             return dataService._stringifyCollectionOperator(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor, "@>", "<@");
         }
+        
+        // ,
+        // includes: function _includes( syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+        //     /*
+        //         first use-case on this:
+        //         syntax == {"type":"includes","args":[{"type":"property","args":[{"type":"value"},{"type":"literal","value":"originId"}]},{"type":"literal","value":"AptPlanSeq"}]}
+
+        //         includes can be applied to an array, in which case we should redirect to has()
+        //         or a string, which we should do here. This will depend on the type of the property involved - here in this example it would be "originId"
+        //     */
+
+        //     // if (typeof syntax.args[1].value === "string") {
+        //     //     var rawExpressionJoinStatementsSize = rawExpressionJoinStatements ? rawExpressionJoinStatements.size : 0,
+        //     //         result =  _propertyNameStringifier(syntax.args[1].value, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements/*, objectDescriptor*/, currentAliasPrefix, inlinedDataPropertyDescriptor);
+
+        // }
 
     },
 
@@ -720,6 +784,8 @@ module.exports = {
                 joinConditionLeftSide,
                 joinCondition,
                 joinType = SQLJoinType.Join,
+                isEqualOperator = (parent && parent.type === "equals"),
+                isEqualNullExpression = isEqualOperator && ((parent.args[0].args[1].value === propertyName ? parent.args[1].value : parent.args[0].value) === null),
                 result;
                 // rawDataDescriptor = dataService.rawDataDescriptorForObjectDescriptor(objectDescriptor),
                 // rawPropertyDescriptor = rawDataDescriptor.propertyDescriptorForName(rawPropertyValue);
@@ -780,47 +846,54 @@ module.exports = {
                 */
 
                 /*
-                    If the property is a relationship to the same object descriptor, we need to alias in SQL.
-                    Instead of using numbers and keep track of what number maps to what relationship,
-                    we're going to bake the semantic in the name, which hopefully works out for many cases,
-                    until we run into one where a new alias would be needed, but we'll cross that bridge
-                    when we have to
+                    I don't see how we can avoid a lookup to what might be on the other side of the operator. If this is a case where the expression is like
+                    aToManyProperty = null, not only there's no point joining to where toMany us pointing to, but the construct ANY () is not going to work, 
+                    it needs to just be "${leftDataSetAlias}"."${rawPropertyValue}" to be added "IS" then "NULL" by the logic elsewhwere
                 */
-                if(propertyDescriptorValueDescriptor === objectDescriptor || (propertyDescriptorValueDescriptor && rawExpressionJoinStatements.hasJoinsInvolvingObjectDescriptor(propertyDescriptorValueDescriptor))) {
-                    joinType = SQLJoinType.LeftJoin;
-                    if(currentAliasPrefix) {
-                        propertyDescriptorValueDescriptorAlias = `${currentAliasPrefix}_${rawPropertyValue}${tableName}`;
-                    } else {
-                        propertyDescriptorValueDescriptorAlias = `${propertyName}_${rawPropertyValue}_${tableName}`;
+
+                if(!isEqualNullExpression) {
+                    /*
+                        If the property is a relationship to the same object descriptor, we need to alias in SQL.
+                        Instead of using numbers and keep track of what number maps to what relationship,
+                        we're going to bake the semantic in the name, which hopefully works out for many cases,
+                        until we run into one where a new alias would be needed, but we'll cross that bridge
+                        when we have to
+                    */
+                    if(propertyDescriptorValueDescriptor === objectDescriptor || (propertyDescriptorValueDescriptor && rawExpressionJoinStatements.hasJoinsInvolvingObjectDescriptor(propertyDescriptorValueDescriptor))) {
+                        joinType = SQLJoinType.LeftJoin;
+                        if(currentAliasPrefix) {
+                            propertyDescriptorValueDescriptorAlias = `${currentAliasPrefix}_${rawPropertyValue}${tableName}`;
+                        } else {
+                            propertyDescriptorValueDescriptorAlias = `${propertyName}_${rawPropertyValue}_${tableName}`;
+                        }
                     }
+                    // else if(currentAliasPrefix) {
+                    //     propertyDescriptorValueDescriptorAlias = `${currentAliasPrefix}_${tableName}`;
+                    // }
+
+                    //propertyDescriptorValueDescriptor = propertyDescriptor._valueDescriptorReference;
+
+                    /*
+                        Create the SQLJoin and set shared properties
+                    */
+
+
+                    resultJoin = new SQLJoin();
+                    resultJoin.leftDataSetSchema = schemaName;
+                    resultJoin.leftDataSet = tableName;
+                    resultJoin.leftDataSetObjecDescriptor = objectDescriptor;
+                    resultJoin.leftDataSetAlias = leftDataSetAlias;
+                    resultJoin.rightDataSet = dataService.tableForObjectDescriptor(propertyDescriptorValueDescriptor);
+
+                    /*
+                        needs rightDataSetObjecDescriptor later, would be better to just put propertyDescriptorValueDescriptor in rightDataSet and get the name,
+                        but in SQL, a dataSet could be a full statement, for which we don't have an object model, yet...
+                    */
+                    resultJoin.rightDataSetObjecDescriptor = propertyDescriptorValueDescriptor;
+                    resultJoin.rightDataSetAlias = propertyDescriptorValueDescriptorAlias;
+                    resultJoin.rightDataSetSchema = schemaName;
+                    resultJoin.type = joinType;
                 }
-                // else if(currentAliasPrefix) {
-                //     propertyDescriptorValueDescriptorAlias = `${currentAliasPrefix}_${tableName}`;
-                // }
-
-                //propertyDescriptorValueDescriptor = propertyDescriptor._valueDescriptorReference;
-
-                /*
-                    Create the SQLJoin and set shared properties
-                */
-
-
-                resultJoin = new SQLJoin();
-                resultJoin.leftDataSetSchema = schemaName;
-                resultJoin.leftDataSet = tableName;
-                resultJoin.leftDataSetObjecDescriptor = objectDescriptor;
-                resultJoin.leftDataSetAlias = leftDataSetAlias;
-                resultJoin.rightDataSet = dataService.tableForObjectDescriptor(propertyDescriptorValueDescriptor);
-
-                /*
-                    needs rightDataSetObjecDescriptor later, would be better to just put propertyDescriptorValueDescriptor in rightDataSet and get the name,
-                    but in SQL, a dataSet could be a full statement, for which we don't have an object model, yet...
-                */
-                resultJoin.rightDataSetObjecDescriptor = propertyDescriptorValueDescriptor;
-                resultJoin.rightDataSetAlias = propertyDescriptorValueDescriptorAlias;
-                resultJoin.rightDataSetSchema = schemaName;
-                resultJoin.type = joinType;
-
                 /*
                     This is the case where the table hosts the array of ids
                     We don't support (we haven't ran into) the case where we'd join from a foreignKey in a table to an array of values on the other side. To do so we might have to introduce
@@ -894,8 +967,18 @@ module.exports = {
                         } else {
                             if(propertyDescriptor.cardinality > 1) {
 
-                                result = joinConditionLeftSide = `ANY ("${leftDataSetAlias}"."${rawPropertyValue}")`;
-                                joinCondition = `"${resultJoin.rightDataSetAlias ? propertyDescriptorValueDescriptorAlias : resultJoin.rightDataSet}".id = ${joinConditionLeftSide}`;
+                                /*
+                                    I don't see how we can avoid a lookup to what might be on the other side of the operator. If this is a case where the expression is like
+                                    aToManyProperty = null, not only there's no point joining to where toMany us pointing to, but the construct ANY () is not going to work, 
+                                    it needs to just be "${leftDataSetAlias}"."${rawPropertyValue}" to be added "IS" then "NULL" by the logic elsewhwere
+                                 */
+
+                                if(isEqualNullExpression) {
+                                    result = `"${leftDataSetAlias}"."${rawPropertyValue}"`;
+                                } else {
+                                    result = joinConditionLeftSide = `ANY ("${leftDataSetAlias}"."${rawPropertyValue}")`;
+                                    joinCondition = `"${resultJoin.rightDataSetAlias ? propertyDescriptorValueDescriptorAlias : resultJoin.rightDataSet}".id = ${joinConditionLeftSide}`;
+                                }
 
                                 // resultJoinString = propertyDescriptorValueDescriptorAlias
                                 //     ? `LEFT JOIN "${schemaName}"."${propertyDescriptorValueDescriptor.name}" "${propertyDescriptorValueDescriptorAlias}" ON "${propertyDescriptorValueDescriptorAlias}".id = ANY ("${leftDataSetAlias}"."${rawPropertyValue}")`
@@ -904,10 +987,12 @@ module.exports = {
                                 //console.log("resultJoinString: ",resultJoinString);
 
                             } else {
-
-                                result = joinConditionLeftSide = `"${leftDataSetAlias}"."${rawPropertyValue}"`;
-                                joinCondition = `"${resultJoin.rightDataSetAlias ? propertyDescriptorValueDescriptorAlias : resultJoin.rightDataSet}".id = ${joinConditionLeftSide}`;
-
+                                if(isEqualNullExpression) {
+                                    result = `"${leftDataSetAlias}"."${rawPropertyValue}"`;
+                                } else {
+                                    result = joinConditionLeftSide = `"${leftDataSetAlias}"."${rawPropertyValue}"`;
+                                    joinCondition = `"${resultJoin.rightDataSetAlias ? propertyDescriptorValueDescriptorAlias : resultJoin.rightDataSet}".id = ${joinConditionLeftSide}`;
+                                }
                                 // resultJoinString = propertyDescriptorValueDescriptorAlias
                                 //     ? `LEFT JOIN "${schemaName}"."${propertyDescriptorValueDescriptor.name}" "${propertyDescriptorValueDescriptorAlias}" ON "${propertyDescriptorValueDescriptorAlias}".id = "${leftDataSetAlias}"."${rawPropertyValue}"`
                                 //     : `JOIN "${schemaName}"."${propertyDescriptorValueDescriptor.name}" ON "${propertyDescriptorValueDescriptor.name}".id = "${leftDataSetAlias}"."${rawPropertyValue}"`;
@@ -917,12 +1002,15 @@ module.exports = {
 
                             }
 
-                            //resultJoin.onConditions.add(joinCondition);
-                            resultJoin.onCondition = joinCondition;
-
+                            if(!isEqualNullExpression) {
+                                //resultJoin.onConditions.add(joinCondition);
+                                resultJoin.onCondition = joinCondition;
+                            }
                         }
 
-                        rawExpressionJoinStatements.add(resultJoin);
+                        if(!isEqualNullExpression) {
+                            rawExpressionJoinStatements.add(resultJoin);
+                        }
                         dataMappings.push(dataService.mappingForType(propertyDescriptorValueDescriptor));
 
                         if(propertyDescriptorValueDescriptorAlias) {
@@ -1073,13 +1161,39 @@ module.exports = {
 
         },
 
+        /*
+            Some decision in term of escaping, formatting, custom function to use etc depend on the type involved, and while for classic relational mapping we have the model,
+            in some cases of arbitrary json stored from somewhere else, we don't. In those cases, only knowing which operator and value an expression is associated with can allow
+            to do the righ thing. Similarly to dataMappings, we might need carry operators involved earlier as well as the right side value, 
+            as walking up the syntactic tree isn't possible and we only carry the parent syntax so far.
+
+
+            Plus, the lookup in originDataSnapshot that should look something like that:
+
+            SELECT DISTINCT (SELECT to_jsonb(_) FROM (SELECT "Workstation"."id","Workstation"."originId","Workstation"."parentId","Workstation"."status","Workstation"."typeId","Workstation"."operationIds","Workstation"."manufacturingPlanId","Workstation"."manufacturingPlanExecutionSequencePosition","Workstation"."vehicleSideIndicator","Workstation"."transportPositionRange","Workstation"."isParallelStation","Workstation"."isConstantlyMovingLine","Workstation"."stopsAtStation","Workstation"."requiresPushButtonRelease","Workstation"."isProcessCompleteStation","Workstation"."alias","Workstation"."name","Workstation"."suborganizationIds","Workstation"."tags","Workstation"."mainContactId","Workstation"."customerEngagementQuestionnaireIds","Workstation"."userPoolIds","Workstation"."aliases","Workstation"."existenceTimeRange","Workstation"."urlAddresses","Workstation"."socialProfileIds","Workstation"."imageIds","Workstation"."fullModuleId","Workstation"."originDataSnapshot","Workstation"."description","Workstation"."isType","Workstation"."isTemplate","Workstation"."templateId","Workstation"."templateName","Workstation"."templateDescription","Workstation"."creationDate","Workstation"."modificationDate","Workstation"."publicationDate") as _) FROM "moe_v1"."Workstation"  
+WHERE ("Workstation"."originDataSnapshot"->'GSPASDataService'->'manufacturingPlan'->>'name' = 'MLP Production Plan 12 Stations' AND "Workstation"."originDataSnapshot"->'GSPASDataService'->>'name' = 'T1A006S')
+
+            from 
+
+            "originDataSnapshot.GSPASDataService.manufacturingPlan.name == 'MLP Production Plan 12 Stations' && originDataSnapshot.GSPASDataService.name == 'T1A006S'"
+
+            needs some work.
+
+            https://www.postgresql.org/docs/17/functions-json.html
+
+            Do we need to use jsonpath?
+            https://www.postgresql.org/docs/current/datatype-json.html#DATATYPE-JSONPATH
+            https://www.dbvis.com/thetable/postgresql-jsonpath/
+
+        */
         property: function _property(syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
             var dataMappingStartLength = dataMappings.length,
                 dataMapping = dataMappings[dataMappingStartLength-1],
                 objectDescriptor = dataMapping.objectDescriptor,
                 propertyName,
                 propertyDescriptor,
-                syntaxArg0,
+                syntaxArg0, syntaxArg1,
+                isParentRightSyntax = syntax === parent.args[1],
                 _propertyNameStringifier = _property._propertyName || (_property._propertyName = dataService.stringifiers._propertyName);
 
             if ((syntaxArg0 = syntax.args[0]).type === "value") {
@@ -1219,7 +1333,16 @@ module.exports = {
                 // if(inlinedDataPropertyDescriptor) {
                 if(dataMapping.currentRawPropertyDescriptor) {
                     if(dataMapping.currentRawPropertyDescriptor.valueType === "jsonb") {
-                        return `${arg0Result}->${arg1Result}`
+
+                        /*
+                            This is a lookup within jsonb and we test if we're at the end of it.
+                            This is assuming - big assumption to be verified - that the value is a string, and eventually used with an operator compatible with strings 
+                        */
+                        if(isParentRightSyntax) {
+                            return `${arg0Result}->>${arg1Result}`
+                        } else {
+                            return `${arg0Result}->${arg1Result}`
+                        }
                     } else {
                         throw "Inlined Data Property traversal not implemnted besides JSONB"
                     }
@@ -1346,11 +1469,30 @@ module.exports = {
         },
 
         /*
-            handling parent might need LATERAL joins ?
+            A parent (^) means addressing the parent scope's DataMapping table name or table alias such that by the time we reach the property syntax handler, it gets it.
+            OLD: handling parent might need LATERAL joins ?
         */
 
         parent: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
-            return '^' + dataService.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor)
+            /*
+                dataMappings.dataMappingScopes contains the array of scopes corresponding to the array of DataMappins, and aliases, 
+                with potentially some "holes" in dataMappings.dataMappingScopes
+            */
+
+            //Loop dataMappingScopes form the end until we find the first index with non undefined content
+            let dataMappingScopes = dataMappings.dataMappingScopes,
+                //We use dataMappings.length as we only fill dataMappingScopes when handling blocks
+                i = dataMappings.length - 1;
+            while(i >= 0) {
+                if(dataMappingScopes[i] !== undefined) break;
+                i--;
+            }
+
+            let parentDataMappings = dataMappings.slice(0,i);
+            parentDataMappings.aliases = dataMappings.aliases.slice(0,i);
+            parentDataMappings.dataMappingScopes = dataMappings.dataMappingScopes.slice(0,i);
+    
+            return dataService.stringify(syntax.args[0], scope, parentDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
         },
 
         if: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
@@ -1933,6 +2075,12 @@ typeToToken.forEach(function (token, type) {
 
             var argsZeroDataMappings = dataMappings.slice(),
             argsOneDataMappings = dataMappings.slice();
+
+            argsZeroDataMappings.aliases = dataMappings.aliases.slice();
+            argsZeroDataMappings.dataMappingScopes = dataMappings.dataMappingScopes.slice();
+            
+            argsOneDataMappings.aliases = dataMappings.aliases.slice();
+            argsOneDataMappings.dataMappingScopes = dataMappings.dataMappingScopes.slice();
 
            var argsZeroValue = dataService.stringify(syntax.args[0],scope, argsZeroDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor),
                 argsOneValue = dataService.stringify(syntax.args[1],scope, argsOneDataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
