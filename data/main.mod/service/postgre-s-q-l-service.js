@@ -5958,7 +5958,7 @@ PostgreSQLService.addClassProperties({
 
     handleCommitTransactionOperation: {
         value: function (commitTransactionOperation) {
-            console.debug(this.identifier+" handleCommitTransactionOperation: id: ",commitTransactionOperation.id+ ", referrer "+ (operation.referrer?.id || operation.referrerId));
+            console.debug(this.identifier+" handleCommitTransactionOperation: id: ",commitTransactionOperation.id+ ", referrer "+ (commitTransactionOperation.referrer?.id || commitTransactionOperation.referrerId));
 
             /*
                 Right now we're receiving this twice for saveChanges happening from inside the Worker.
