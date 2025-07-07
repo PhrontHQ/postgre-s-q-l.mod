@@ -804,12 +804,12 @@ module.exports = {
                 */
                 return `'${propertyName}'`;
             }
-            else if(!propertyDescriptor && !objectRule && !dataMapping.rawDataMappingRuleForPropertyName(propertyName) && !dataMapping.isPrimaryKeyComponent(propertyName)) {
-                /*
-                    Not really sure why we'd be there, so give up!
-                */
-                throw "Can't stringify Unknown property `"+propertyName+"', no propertyDescriptor nor objectMappingRules found for objectDescriptor '"+objectDescriptor.name+"' in expression qualifying '"+dataMappings[0].objectDescriptor.name+"'";
-            }
+            // else if(!propertyDescriptor && !objectRule && !dataMapping.rawDataMappingRuleForPropertyName(propertyName) && !dataMapping.isPrimaryKeyComponent(propertyName)) {
+            //     /*
+            //         if we didn't find s This should only be a rawData level l
+            //     */
+            //     throw "Can't stringify Unknown property `"+propertyName+"', no propertyDescriptor nor objectMappingRules found for objectDescriptor '"+objectDescriptor.name+"' in expression qualifying '"+dataMappings[0].objectDescriptor.name+"'";
+            // }
 
             if(locales) {
                 language = locales[0].language;
