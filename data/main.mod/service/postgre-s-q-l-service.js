@@ -1884,10 +1884,10 @@ PostgreSQLService.addClassProperties({
 
                                         //We need to add rawDataMappingRules of all descendants
                                         if(this.isObjectDescriptorStoreShared(rawDataOperation.objectDescriptor)/* && iTargetPath !== "hostDeviceConnections"*/) {
-                                            console.warn("?????????????? "+rawDataOperation.objectDescriptor.name + " ObjectDescriptor Store Shared - "+iTargetPath);
+                                            //console.warn("?????????????? "+rawDataOperation.objectDescriptor.name + " ObjectDescriptor Store Shared - "+iTargetPath);
                                             targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRulesIncludingStoredDescendants
                                         } else {
-                                            console.warn("?????????????? "+rawDataOperation.objectDescriptor.name + " ObjectDescriptor Store NOT Shared - "+iTargetPath);
+                                            //console.warn("?????????????? "+rawDataOperation.objectDescriptor.name + " ObjectDescriptor Store NOT Shared - "+iTargetPath);
 
                                             targetRawDataMappingRules = rawDataOperation.mapping.rawDataMappingRules
                                         }
