@@ -1,0 +1,124 @@
+{
+    "expression": "originDataSnapshot.GSPASDataService[originDataSnapshot.GSPASDataService.manufacturingPlan.name] == 'MLP Production Plan 12 Stations' && originDataSnapshot.GSPASDataService.name == 'T1A006S'",
+    "syntax": {
+        "type": "property",
+        "args": [
+            {
+                "type": "property",
+                "args": [
+                    {
+                        "type": "property",
+                        "args": [
+                            {
+                                "type": "value"
+                            },
+                            {
+                                "type": "literal",
+                                "value": "originDataSnapshot"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "literal",
+                        "value": "GSPASDataService"
+                    }
+                ]
+            },
+            {
+                "type": "property",
+                "args": [
+                    {
+                        "type": "property",
+                        "args": [
+                            {
+                                "type": "property",
+                                "args": [
+                                    {
+                                        "type": "property",
+                                        "args": [
+                                            {
+                                                "type": "value"
+                                            },
+                                            {
+                                                "type": "literal",
+                                                "value": "originDataSnapshot"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "type": "literal",
+                                        "value": "GSPASDataService"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "literal",
+                                "value": "manufacturingPlan"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "literal",
+                        "value": "name"
+                    }
+                ]
+            }
+        ]
+    },
+    "initialSyntax": {
+        "type": "and",
+        "args": [
+            {
+                "type": "equals",
+                "args": [
+                    {
+                        "type": "property",
+                        "args": [
+                            {
+                                "type": "property",
+                                "args": [
+                                    {
+                                        "type": "value"
+                                    },
+                                    {
+                                        "type": "literal",
+                                        "value": "manufacturingPlan"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "literal",
+                                "value": "name"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "literal",
+                        "value": "MLP Production Plan 12 Stations"
+                    }
+                ]
+            },
+            {
+                "type": "equals",
+                "args": [
+                    {
+                        "type": "property",
+                        "args": [
+                            {
+                                "type": "value"
+                            },
+                            {
+                                "type": "literal",
+                                "value": "name"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "literal",
+                        "value": "T1A006S"
+                    }
+                ]
+            }
+        ]
+    }
+}
