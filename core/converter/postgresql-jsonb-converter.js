@@ -4,7 +4,7 @@
  * @requires montage/core/converter/number-converter
  */
 var Converter = require("mod/core/converter/converter").Converter,
-    pgutils = require('../../data/main.mod/service/pg-utils'),
+    pgutils = require('../../data/service/pg-utils'),
     prepareValue = pgutils.prepareValue;
 
 

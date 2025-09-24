@@ -1,5 +1,5 @@
 /**
- * @module data/main.mod/converter/r-f-c-3339-u-t-c-range-string-to-date-range-converter
+ * @module data/converter/r-f-c-3339-u-t-c-range-string-to-date-range-converter
  * @requires montage/core/converter/converter
  */
 var RFC3339UTCRangeStringToDateRangeConverter = require("./r-f-c-3339-u-t-c-range-string-to-date-range-converter").RFC3339UTCRangeStringToDateRangeConverter,

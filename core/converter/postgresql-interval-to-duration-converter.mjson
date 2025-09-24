@@ -14,11 +14,11 @@
             "propertyDescriptorGroups": {},
             "propertyValidationRules": {},
             "objectDescriptorModule": {
-                "%": "data/main.mod/converter/postgresql-interval-to-duration-converter.mjson"
+                "%": "data/converter/postgresql-interval-to-duration-converter.mjson"
             },
             "exportName": "PostgreSQLIntervalToDurationConverter",
             "module": {
-                "%": "data/main.mod/converter/postgresql-interval-to-duration-converter"
+                "%": "data/converter/postgresql-interval-to-duration-converter"
             }
         }
     }

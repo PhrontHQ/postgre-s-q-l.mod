@@ -2857,7 +2857,7 @@ PostgreSQLService.addClassProperties({
                         rawType = "numrange";
                     } else if(propertyDescriptorValueType === "duration") {
                         /*
-                            this is  a custom type defined in data/main.mod/raw-model/intervalrange.sql
+                            this is  a custom type defined in data/raw-model/intervalrange.sql
 
                             We need to find a way in mappings to be able to execute that kind of sql when we create the storage for an ObjectDescriptor.
                         */

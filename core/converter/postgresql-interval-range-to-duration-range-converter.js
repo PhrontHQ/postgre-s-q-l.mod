@@ -1,5 +1,5 @@
 /**
- * @module data/main.mod/converter/postgresql-interval-range-to-duration-range-converter
+ * @module data/converter/postgresql-interval-range-to-duration-range-converter
  * @requires montage/core/converter/converter
  */
 var Converter = require("mod/core/converter/converter").Converter,

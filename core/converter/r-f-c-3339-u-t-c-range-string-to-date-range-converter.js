@@ -1,5 +1,5 @@
 /**
- * @module data/main.mod/converter/r-f-c-3339-u-t-c-range-string-to-date-range-converter
+ * @module data/converter/r-f-c-3339-u-t-c-range-string-to-date-range-converter
  * @requires montage/core/converter/converter
  */
 var Converter = require("mod/core/converter/converter").Converter,
