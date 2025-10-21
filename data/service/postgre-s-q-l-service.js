@@ -6588,6 +6588,8 @@ PostgreSQLService.addClassProperties({
                                 }
                             }, done);
                         });
+                    } else {
+                        callback(err, client, done);
                     }
 
                 } else {
