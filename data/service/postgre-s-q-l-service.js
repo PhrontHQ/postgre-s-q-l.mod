@@ -2359,7 +2359,7 @@ PostgreSQLService.addClassProperties({
                 readOperationCompletionPromise, readOperationCompletionPromiseResolve, readOperationCompletionPromiseReject;
 
 
-            if(this.promisesReadOperationCompletion) {
+            if(this.promisesReadCompletionOperation) {
                 readOperationCompletionPromiseResolvers = Promise.withResolvers();
                 readOperationCompletionPromise = readOperationCompletionPromiseResolvers.promise;
                 readOperationCompletionPromiseResolve = readOperationCompletionPromiseResolvers.resolve;
