@@ -613,6 +613,27 @@ module.exports = {
         },
 
         parameters: function (syntax, scope, parent, dataService, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor) {
+            /*
+                See in property: function _property()
+                    else if (syntaxArg0.type === "parameters") {
+                    }
+                To grab the other side of the operator for the parameter.
+
+                for identity === $
+
+                The other side is tranformed to identyId. found here using:
+
+                let propertyName = parent.args[0].args[1].value;
+                let dataMapping = dataMappings[dataMappings.length-1];
+                let objectRule = dataMapping.objectMappingRuleForPropertyName(propertyName);
+                let propertyDescriptor = objectRule.propertyDescriptor;
+
+                propertyDescriptor.name is "identity"
+
+                This would help passing propertyDescriptor instead of undefined bellow, if that can help mapPropertyDescriptorValueToRawValue()
+            */
+            
+            
             return dataService.mapPropertyDescriptorValueToRawValue(/*propertyDescriptor*/undefined, scope && (scope.parameters || scope), /*rawPropertyName*/undefined, /*type*/dataMappings[dataMappings.length-1].currentRawPropertyDescriptor?.valueType);
             //return typeof scope === "string" ? dataService.mapPropertyDescriptorValueToRawValue(undefined,scope) : '$';
         },

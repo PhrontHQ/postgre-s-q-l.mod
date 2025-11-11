@@ -708,7 +708,7 @@ PostgreSQLService.addClassProperties({
     */
 
     mapCriteriaToRawCriteria: {
-        value: function (criteria, mapping, locales, rawExpressionJoinStatements) {
+        value: function mapCriteriaToRawCriteria(criteria, mapping, locales, rawExpressionJoinStatements) {
             var rawCriteria,
                 rawExpression,
                 rawParameters;
@@ -1903,9 +1903,13 @@ PostgreSQLService.addClassProperties({
 
                                         for(let iColumnName in targetRawDataMappingRules) {
                                             let iRule = targetRawDataMappingRules[iColumnName];
-                                            escapedRawReadExpressions.push(
-                                                this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iRule.propertyDescriptor,iRule.targetPath, targetMapping, operationLocales, iValueDescriptorReferenceTableName)
-                                            )
+                                            if(!iRule.propertyDescriptor) {
+                                                console.warn(`No property descriptor found for ${rawDataOperation.objectDescriptor.name}'s property "${iRule.sourcePath}"`);
+                                            } else {
+                                                escapedRawReadExpressions.push(
+                                                    this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iRule.propertyDescriptor,iRule.targetPath, targetMapping, operationLocales, iValueDescriptorReferenceTableName)
+                                                )
+                                            }
                                         }
                                         
                                         rawDataOperation.columnNames = escapedRawReadExpressions;
@@ -6362,6 +6366,7 @@ PostgreSQLService.addClassProperties({
                 createOperationType = DataOperation.Type.CreateOperation,
                 updateOperationType = DataOperation.Type.UpdateOperation,
                 deleteOperationType = DataOperation.Type.DeleteOperation,
+                noopOperationType = DataOperation.Type.NoOp,
                 sqlMapPromises = [],
                 rawOperationRecords = [],
                 i, countI, iOperation, iRecord, createdCount = 0;
@@ -6387,7 +6392,7 @@ PostgreSQLService.addClassProperties({
                         createdCount++;
                     } else if (iOperation.type === deleteOperationType) {
                         sqlMapPromises.push(this._mapDeleteOperationToSQL(iOperation, rawDataOperation, iRecord));
-                    } else {
+                    } else if (iOperation.type !== noopOperationType) {
                         console.error("-handleAppendTransactionOperation: Operation With Unknown Type: ", iOperation);
                     }
                 }
