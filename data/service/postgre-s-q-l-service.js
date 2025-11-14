@@ -6320,7 +6320,7 @@ PostgreSQLService.addClassProperties({
                 NoOp, we bail
             */
             if(Object.keys(performTransactionOperation.data.operations).length === 0) {
-                var operation = new DataOperation();
+                let operation = new DataOperation();
                 operation.referrerId = performTransactionOperation.id;
                 operation.target = performTransactionOperation.target;
                 //Carry on the details needed by the coordinator to dispatch back to client
@@ -6379,8 +6379,15 @@ PostgreSQLService.addClassProperties({
                 //Now loop on operations and create the matching sql:
                 for (i = 0, countI = batchedOperations && batchedOperations.length; (i < countI); i++) {
                     iOperation = batchedOperations[i];
+
+                    //One would hope this shouldn't happen...
+                    if(iOperation.type === noopOperationType) continue;
+
                     iRecord = {};
+
+                    //Remove? Looks like this isn't used here
                     rawOperationRecords[i] = iRecord;
+                    
                     // if (iOperation.type === readOperationType) {
                     //     this.handleRead(iOperation);
                     //     // sqlMapPromises.push(Promise.resolve(this.mapReadOperationToRawStatement(iOperation, rawDataOperation)));
@@ -6397,11 +6404,25 @@ PostgreSQLService.addClassProperties({
                     }
                 }
 
-                var operation = new DataOperation();
-                operation.referrerId = performTransactionOperation.id;
-                operation.target = performTransactionOperation.target;
+                var responseOperation = new DataOperation();
+                responseOperation.referrerId = performTransactionOperation.id;
+                responseOperation.target = performTransactionOperation.target;
                 //Carry on the details needed by the coordinator to dispatch back to client
-                operation.clientId = performTransactionOperation.clientId;
+                responseOperation.clientId = performTransactionOperation.clientId;
+
+                
+                //After looping on content, there's nothing to do, we bail:
+                if(sqlMapPromises.length === 0) {
+                    responseOperation.type = performTransactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                        ? DataOperation.Type.CommitTransactionCompletedOperation 
+                        : DataOperation.Type.PerformTransactionCompletedOperation
+                    
+                    //Not sure what we could return here.
+                    responseOperation.data = [];
+                    responseOperation.rawDataService = this;
+                    responseOperation.target.dispatchEvent(responseOperation);
+                    return;
+                }
 
 
                 return Promise.all(sqlMapPromises)
@@ -6466,14 +6487,14 @@ PostgreSQLService.addClassProperties({
                     })
                     .then((rawTransaction) => {
 
-                        this.performRawTransactionForDataOperation(rawTransaction, performTransactionOperation, operation);
+                        this.performRawTransactionForDataOperation(rawTransaction, performTransactionOperation, responseOperation);
                     
                     })
                     .catch(function (error) {
-                        operation.type = DataOperation.Type.PerformTransactionFailedOperation;
-                        operation.data = error;
-                        operation.target.dispatchEvent(operation);
-                        return operation;
+                        responseOperation.type = DataOperation.Type.PerformTransactionFailedOperation;
+                        responseOperation.data = error;
+                        responseOperation.target.dispatchEvent(responseOperation);
+                        return responseOperation;
                     });
 
 
@@ -6481,15 +6502,15 @@ PostgreSQLService.addClassProperties({
             .catch(function (error) {
                 error.message = "rawClientPromise failed: "+error.message;
                 console.error(error);
-                var operation = new DataOperation();
-                operation.referrerId = performTransactionOperation.id;
-                operation.target = performTransactionOperation.target;
+                var responseOperation = new DataOperation();
+                responseOperation.referrerId = performTransactionOperation.id;
+                responseOperation.target = performTransactionOperation.target;
                 //Carry on the details needed by the coordinator to dispatch back to client
-                operation.clientId = performTransactionOperation.clientId;
-                operation.type = DataOperation.Type.PerformTransactionFailedOperation;
-                operation.data = error;
-                operation.target.dispatchEvent(operation);
-                return operation;
+                responseOperation.clientId = performTransactionOperation.clientId;
+                responseOperation.type = DataOperation.Type.PerformTransactionFailedOperation;
+                responseOperation.data = error;
+                responseOperation.target.dispatchEvent(responseOperation);
+                return responseOperation;
             });
 
         }
