@@ -18,7 +18,7 @@ exports.format = (schema) => {
                     END IF;
 
                     -- Iterate over each element in "from_array".
-                    FOR loop_offset IN ARRAY_LOWER(from_array, 1)..ARRAY_UPPER(from_array, 1) LOOP
+                    FOR loop_offset IN coalesce(ARRAY_LOWER(from_array, 1), 1)..coalesce(ARRAY_UPPER(from_array, 1), 1) LOOP
                             -- If the element being iterated over is in "remove_array",
                             -- do not append it to "return_array".
                             IF (from_array[loop_offset] = ANY(remove_array)) IS DISTINCT FROM TRUE THEN

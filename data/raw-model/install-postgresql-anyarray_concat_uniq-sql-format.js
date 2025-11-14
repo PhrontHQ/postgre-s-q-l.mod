@@ -21,7 +21,7 @@ exports.format = (schema) => {
             return_array = with_array;
 
             -- Iterate over each element in "concat_array".
-            FOR loop_offset IN ARRAY_LOWER(concat_array, 1)..ARRAY_UPPER(concat_array, 1) LOOP
+            FOR loop_offset IN coalesce(ARRAY_LOWER(concat_array, 1), 1)..coalesce(ARRAY_UPPER(concat_array, 1), 1) LOOP
                 IF NOT concat_array[loop_offset] = ANY(return_array) THEN
                     return_array = ARRAY_APPEND(return_array, concat_array[loop_offset]);
                 END IF;
