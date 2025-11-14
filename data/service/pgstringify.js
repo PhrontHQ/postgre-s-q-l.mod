@@ -1214,7 +1214,7 @@ WHERE ("Workstation"."originDataSnapshot"->'GSPASDataService'->'manufacturingPla
                 propertyName,
                 propertyDescriptor,
                 syntaxArg0, syntaxArg1,
-                isParentRightSyntax = syntax === parent.args[1],
+                isParentRightSyntax = syntax === parent?.args[1],
                 _propertyNameStringifier = _property._propertyName || (_property._propertyName = dataService.stringifiers._propertyName);
 
             if ((syntaxArg0 = syntax.args[0]).type === "value") {
