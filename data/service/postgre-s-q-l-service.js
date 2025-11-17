@@ -1270,8 +1270,9 @@ PostgreSQLService.addClassProperties({
                             }
                         }
                     }
-                    //The propertyDescriptor just doen't exist...
-                    else {
+
+                    //We really tried... So if the propertyDescriptor still can't be found...
+                    if(!propertyDescriptor) {
                         error.name = DataOperationErrorNames.PropertyDescriptorNotFound;
                         error.message = error.message + " because no matching property descriptor exist"
                     }
@@ -2342,7 +2343,7 @@ PostgreSQLService.addClassProperties({
 
                     console.error("handleReadOperation Error: readOperation:", readOperation, "rawDataOperation: ", rawDataOperation, "error: ", err);
 
-                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, error, null, isNotLast, rawDataOperation.target);
+                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], isNotLast, rawDataOperation.target);
                     /*
                         If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                     */
