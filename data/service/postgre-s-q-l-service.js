@@ -1254,18 +1254,26 @@ PostgreSQLService.addClassProperties({
                }
 
                 propertyDescriptor = mapping.propertyDescriptorForRawPropertyName(rawPropertyName);
-                if(!propertyDescriptor && this.isObjectDescriptorStoreShared(objectDescriptor)) {
-                    //We need to find objectDescriptor's descendant whose maaping will find propertyDescriptor
-                    let descendantDescriptors = objectDescriptor.descendantDescriptors,
-                        iDescendantMapping;
-                        
-                    for(let i = 0, countI = descendantDescriptors.length; (i <countI); i++) {
-                        iDescendantMapping = this.mappingForType(descendantDescriptors[i]);
-                        if(propertyDescriptor = iDescendantMapping.propertyDescriptorForRawPropertyName(rawPropertyName)) {
-                            //Override what we set earlier
-                            error.objectDescriptor = descendantDescriptors[i];
-                            break;
+                if(!propertyDescriptor) {
+                    
+                    if(this.isObjectDescriptorStoreShared(objectDescriptor)) {
+                        //We need to find objectDescriptor's descendant whose maaping will find propertyDescriptor
+                        let descendantDescriptors = objectDescriptor.descendantDescriptors,
+                            iDescendantMapping;
+                            
+                        for(let i = 0, countI = descendantDescriptors.length; (i <countI); i++) {
+                            iDescendantMapping = this.mappingForType(descendantDescriptors[i]);
+                            if(propertyDescriptor = iDescendantMapping.propertyDescriptorForRawPropertyName(rawPropertyName)) {
+                                //Override what we set earlier
+                                error.objectDescriptor = descendantDescriptors[i];
+                                break;
+                            }
                         }
+                    }
+                    //The propertyDescriptor just doen't exist...
+                    else {
+                        error.name = DataOperationErrorNames.PropertyDescriptorNotFound;
+                        error.message = error.message + " because no matching property descriptor exist"
                     }
                 }
 
@@ -2324,9 +2332,24 @@ PostgreSQLService.addClassProperties({
                     // reject(operation);
                     err.readOperationExecutedCount = readOperationExecutedCount;
 
+                    /*
+                        Returning a subclass of Error that doesn't exists client side nor can be required if we don't know its module id
+                        creates an exception. So we turn it into a plain Error first
+                    */
+                    let error = new Error(err.message);
+
+                    Object.assign(error, err);
+
                     console.error("handleReadOperation Error: readOperation:", readOperation, "rawDataOperation: ", rawDataOperation, "error: ", err);
 
-                    reject(err);
+                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, error, null, isNotLast, rawDataOperation.target);
+                    /*
+                        If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
+                    */
+                    operation.target = objectDescriptor;
+                    //objectDescriptor.dispatchEvent(operation);
+                    operation.readOperationExecutedCount = readOperationExecutedCount;
+                    resolve(operation);
                 } else {
 
                     /*
