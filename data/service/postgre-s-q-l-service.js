@@ -1,3 +1,4 @@
+const { stringify } = require("querystring");
 
 var RawDataService = require("mod/data/service/raw-data-service").RawDataService,
     Montage = require("mod/core/core").Montage,
@@ -4511,6 +4512,8 @@ PostgreSQLService.addClassProperties({
                 operationLocales, language, region,
                 sql;
 
+            console.log("PostgreSQLService._mapCreateOperationToSQL", stringifyOperation(createOperation));
+
             //Take care of locales
             operationLocales = createOperation.locales;
             // if(operationLocales = this.localesFromCriteria(criteria)) {
@@ -4683,6 +4686,10 @@ PostgreSQLService.addClassProperties({
 
                 }
 
+                if (tableName === "Person") {
+                    console.log("_mapCreateOperationToSQL: sql: "+sql, new Error("Follow the stack"));
+                    return sql;
+                }
                 console.log("_mapCreateOperationToSQL: sql: "+sql)
                 return sql;
             });
@@ -4771,6 +4778,7 @@ PostgreSQLService.addClassProperties({
                         INSERT INTO users (firstname, lastname) VALUES ('Joe', 'Cool') RETURNING id;
                     */
                     rawDataOperation.sql = this._mapCreateOperationToSQL(createOperation, rawDataOperation, record);
+                    console.log("PostgreSQLService.handleCreateOperation", stringifyOperation(createOperation));
                     var promise = Promise.is(rawDataOperation.sql) ? rawDataOperation.sql : Promise.resolve(rawDataOperation.sql);
                     //console.log(sql);
                     promise.then((sql) => {
