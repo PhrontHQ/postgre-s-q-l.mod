@@ -2316,7 +2316,9 @@ PostgreSQLService.addClassProperties({
                             .then((result) => {
                                 //Now try again executing the statement
                                 return this._executeReadStatementForReadOperation(rawDataOperation, readOperation, readOperationsCount, readOperationExecutedCount, resolve, reject);
-                            });    
+                            }).catch((error) => {
+                                reject(error);
+                            });
                         } else {
                             reject(err);
                         }
@@ -3844,6 +3846,11 @@ PostgreSQLService.addClassProperties({
                 this.mapConnectionToRawDataOperation(rawDataOperation);
 
                 objectRule = mapping.objectMappingRuleForPropertyName(propertyDescriptor.name);
+                if (!objectRule) {
+                    let error = new Error(`Failed to create rawOperation to add property ${propertyDescriptor.name} to table ${objectDescriptor.name}`);
+                    error.name = DataOperationErrorNames.PropertyMappingNotFound;
+                    throw error;
+                }
                 objectRuleSource = objectRule.sourcePath;
                 rawPropertyDescriptor = rawDataDescriptor.propertyDescriptorForName(objectRuleSource);
                 rawDataMappingRule = objectRule && mapping.rawDataMappingRuleForPropertyName(objectRuleSource);
@@ -4388,10 +4395,24 @@ PostgreSQLService.addClassProperties({
 
                 let rawOperation = {},
                     createOperation = this.objectPropertyStoreCreateOperationForPropertyDescriptor(propertyDescriptor, objectDescriptor);
-                    rawDataOperation = this.mapObjectPropertyStoreCreateOperationToRawOperation(createOperation, rawOperation);
+
+                // let rawDataOperation, error;
+                //     try {
+                //     } catch (e) {
+                //         error = e;
+                //     }
     
                 promise = new Promise((resolve, reject) => {
-                    //console.log("rawDataOperation: ",rawDataOperation);
+                    let rawDataOperation;
+                    try {
+                        rawDataOperation = this.mapObjectPropertyStoreCreateOperationToRawOperation(createOperation, rawOperation);
+                    } catch (e) {
+                        // let error = new Error(e.message);
+                        // error.name = e.name;
+                        reject(e);
+                        return;
+                    }
+
                     this.performRawDataOperation(rawDataOperation, function (err, data) {
 
                         err
@@ -4512,7 +4533,7 @@ PostgreSQLService.addClassProperties({
                 operationLocales, language, region,
                 sql;
 
-            console.log("PostgreSQLService._mapCreateOperationToSQL", stringifyOperation(createOperation));
+            // console.log("PostgreSQLService._mapCreateOperationToSQL", stringifyOperation(createOperation));
 
             //Take care of locales
             operationLocales = createOperation.locales;
@@ -4778,7 +4799,7 @@ PostgreSQLService.addClassProperties({
                         INSERT INTO users (firstname, lastname) VALUES ('Joe', 'Cool') RETURNING id;
                     */
                     rawDataOperation.sql = this._mapCreateOperationToSQL(createOperation, rawDataOperation, record);
-                    console.log("PostgreSQLService.handleCreateOperation", stringifyOperation(createOperation));
+                    // console.log("PostgreSQLService.handleCreateOperation", stringifyOperation(createOperation));
                     var promise = Promise.is(rawDataOperation.sql) ? rawDataOperation.sql : Promise.resolve(rawDataOperation.sql);
                     //console.log(sql);
                     promise.then((sql) => {
@@ -6249,7 +6270,7 @@ PostgreSQLService.addClassProperties({
                             })
                             .catch((error) => {
                                 shouldRetry = false;
-                                console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
+                                console.error('Error adding column to table for property:', objectDescriptor.name + "." + propertyDescriptor.name, error);
         
                                 //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
                                 responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
