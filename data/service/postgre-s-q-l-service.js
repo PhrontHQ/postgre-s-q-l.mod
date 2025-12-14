@@ -6707,7 +6707,7 @@ PostgreSQLService.addClassProperties({
                             if(err.message.includes("already exists") && dataOperation.type === DataOperation.Type.CreateOperation && rawDataOperation.sql.startsWith("CREATE TABLE")) {
                                 callback(null, res);
                             } else {
-                                //console.error("sendDirectStatement() client.query error: ",err);
+                                console.error("sendDirectStatement() client.query error: ",err);
                                 callback(err);    
                             }
                         } else {
@@ -6718,6 +6718,7 @@ PostgreSQLService.addClassProperties({
 
                 }, dataOperation);
             }).catch(error => {
+                console.error("sendDirectStatement() rawClientPromise catch error: ",error);
                 // let operation = this.responseOperationForReadOperation(dataOperation, error, null, false/*isNotLast*/);
                 // dataOperation.target.dispatchEvent(operation);
                 throw error;
