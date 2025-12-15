@@ -6711,6 +6711,7 @@ PostgreSQLService.addClassProperties({
                                 callback(err);    
                             }
                         } else {
+                            console.debug("sendDirectStatement() client.query result: ",res);
                             callback(null, res);
                         }
                       })
