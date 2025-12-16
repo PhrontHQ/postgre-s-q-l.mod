@@ -461,6 +461,10 @@ PostgreSQLService.addClassProperties({
             if(this.clientPool) {
                 //Hard-coded custom object-mapping
                 this.clientPool.databaseCredentials = databaseCredentials;
+
+                console.log("connection.host is "+databaseCredentials.host);
+                console.log("connection.username is "+databaseCredentials.username);
+
             }
 
             return databaseCredentials;
@@ -472,6 +476,8 @@ PostgreSQLService.addClassProperties({
             if(this.connection.secret) {
 
                 let databaseCredentials = this._loadDatabaseCredentialsFromSecret(this.connection.secret);
+                console.log("connection.host is "+databaseCredentials.host);
+                console.log("connection.username is "+databaseCredentials.username);
                 promises.push(Promise.resolve(databaseCredentials));
 
             } else {
