@@ -457,6 +457,9 @@ PostgreSQLService.addClassProperties({
         value: function(aSecret) {
             let databaseCredentials = aSecret.value;
 
+            console.log("databaseCredentials.host is "+databaseCredentials.host);
+            console.log("databaseCredentials.username is "+databaseCredentials.username);
+
             this.databaseCredentials = databaseCredentials;
             if(this.clientPool) {
                 //Hard-coded custom object-mapping
