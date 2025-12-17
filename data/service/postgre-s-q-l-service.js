@@ -6621,7 +6621,16 @@ PostgreSQLService.addClassProperties({
         }
     },
 
-    _createDatabaseWithClientForRawDataOperation: {
+    __createDatabasePromiseByDatabaseName: {
+        value: undefined
+    },
+    _createDatabasePromiseByDatabaseName: {
+        get: function() {
+            return this.__createDatabasePromiseByDatabaseName || (this.__createDatabasePromiseByDatabaseName = new Map());
+        }
+    },
+
+    __createDatabaseWithClientForRawDataOperation: {
         value: function(client, rawDataOperation, callback, done) {
             if(!client) return;
 
@@ -6639,6 +6648,58 @@ PostgreSQLService.addClassProperties({
         }
     },
 
+    _createDatabaseWithClientForRawDataOperation: {
+        value: function(rawDataOperation) {
+
+            let createDatabasePromise = this._createDatabasePromiseByDatabaseName.get(rawDataOperation.database);
+            if(!createDatabasePromise) {
+
+                createDatabasePromise = new Promise((resolve, reject) => {
+                    let createDatabaseOperation = { ...rawDataOperation },
+                        databaseName = createDatabaseOperation.database;
+
+                    delete createDatabaseOperation.database;
+                    delete createDatabaseOperation.schema;
+                    delete createDatabaseOperation.sql;
+
+
+
+                    /*
+                        It doesn't seem possible to connect with the PostgreSQL database server
+                        without providing a database name in the connection. A node-postgres limitation?
+                        
+                        Knowing that there's always a default database named "postgres", we're going to use this
+                    */
+                    let tempConnection = this.clientPool.rawClientPoolConnectionOptions;
+                    tempConnection.database = "postgres";
+
+                    let tempRawClientPool = this.clientPool.createRawClientPool(tempConnection);
+
+
+                    tempRawClientPool.connect((err, client, done) => {
+                        createDatabaseOperation.sql = `CREATE DATABASE ${databaseName};`;
+
+                        this.__createDatabaseWithClientForRawDataOperation(client, createDatabaseOperation, (err, result) => {
+
+                            if(!err) {
+                                this.clientPool.connectForDataOperation(rawDataOperation, (err, client, done) => {                    
+                                    resolve(client);
+                                });    
+                            } else {
+                                reject(err);
+                            }
+
+                        }, done);
+                    });
+                });
+
+                this._createDatabasePromiseByDatabaseName.set(rawDataOperation.database, createDatabasePromise);
+            }
+
+            return createDatabasePromise;
+        }
+    },
+
     connectForRawDataOperation: {
         value: function (rawDataOperation, callback, dataOperation) {
             this.clientPool.connectForDataOperation(rawDataOperation, (err, client, done) => {
@@ -6646,33 +6707,14 @@ PostgreSQLService.addClassProperties({
                     this.mapRawDataOperationErrorToDataOperation(rawDataOperation, err, dataOperation);
 
                     if(err.name === DataOperationErrorNames.DatabaseMissing) {
-                        let createDatabaseOperation = { ...rawDataOperation },
-                            databaseName = createDatabaseOperation.database;
 
-                        delete createDatabaseOperation.database;
-                        delete createDatabaseOperation.schema;
-                        delete createDatabaseOperation.sql;
-
-
-                        //Remove it temporarily from this.clientPool's connection and we'll add it back after it's created:
-                        delete this.clientPool.connection.database;
-                        delete this.clientPool.rawClientPool.options.database;
-
-                        this.clientPool.connectForDataOperation(createDatabaseOperation, (err, client, done) => {
-                            createDatabaseOperation.sql = `CREATE DATABASE ${databaseName};`;
-
-                            this._createDatabaseWithClientForRawDataOperation(client, createDatabaseOperation, (err, result) => {
-
-                                if(!err) {
-                                    this.clientPool.connection.database = this.clientPool.rawClientPool.options.database = databaseName;
-                                    this.clientPool.connectForDataOperation(rawDataOperation, (err, client, done) => {                    
-                                        callback(err, client, done);
-                                    });    
-                                } else {
-                                    callback(err, client, done);
-                                }
-                            }, done);
-                        });
+                        this._createDatabaseWithClientForRawDataOperation(rawDataOperation)
+                        .then((client) => {
+                            callback(null, client, done);
+                        })
+                        .catch((error) => {
+                            callback(error, client, done);
+                        })
                     } else {
                         callback(err, client, done);
                     }
