@@ -1290,7 +1290,7 @@ PostgreSQLService.addClassProperties({
 
                 console.log(objectDescriptor.name+": propertyDescriptor: ",propertyDescriptor);
             } 
-            else if(doesNotExist && isDatabaseError) {
+            else if(doesNotExist && isDatabaseError) { //code == '3D000'
                 error.name = DataOperationErrorNames.DatabaseMissing;
             }
             return error;
