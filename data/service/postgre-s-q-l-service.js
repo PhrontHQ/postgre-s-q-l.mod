@@ -6318,7 +6318,7 @@ PostgreSQLService.addClassProperties({
         value: function (rawTransaction, transactionOperation, responseOperation) {
 
             // callback - checkout a client
-            this.connectForDataOperation(transactionOperation,(err, client, done) => {
+            this.connectForRawDataOperation(transactionOperation,(err, client, done) => {
                 
                 /*
                     If connection fails, there's not much more we can do, we report the error 
