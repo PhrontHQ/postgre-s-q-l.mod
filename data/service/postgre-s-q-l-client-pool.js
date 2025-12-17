@@ -56,8 +56,9 @@ var PostgreSQLClientPool = exports.PostgreSQLClientPool = RawDatabaseClientPool.
     },
 
 
-    createRawClientPool: {
-        value: function() {
+    //This isn't cached. Shoould it be?
+    rawClientPoolConnectionOptions: {
+        get: function() {
 
             if(!this.databaseCredentials) {
                 return null;
@@ -113,6 +114,13 @@ var PostgreSQLClientPool = exports.PostgreSQLClientPool = RawDatabaseClientPool.
                     ssl.cert = clientCertificate;
                 }
             }
+
+            return connectionOptions;
+        }
+    },
+
+    createRawClientPool: {
+        value: function(connectionOptions = this.rawClientPoolConnectionOptions) {
 
             //console.debug("connectionOptions: ",connectionOptions);
 
