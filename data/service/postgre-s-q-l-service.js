@@ -6321,12 +6321,13 @@ PostgreSQLService.addClassProperties({
         value: function (rawTransaction, transactionOperation, responseOperation) {
 
             // callback - checkout a client
-            this.connectForRawDataOperation(transactionOperation,(err, client, done) => {
+            this.connectForRawDataOperation(rawTransaction,(err, client, done) => {
                 
                 /*
                     If connection fails, there's not much more we can do, we report the error 
                 */
                 if (err) {
+                    console.warn("performRawTransactionForDataOperation connectForRawDataOperation() failed with error "+ JSON.stringify(err),rawTransaction);
                     // responseOperation.type = DataOperation.Type.PerformTransactionFailedOperation;
                     responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
                             ? DataOperation.Type.CommitTransactionFailedOperation 
@@ -6639,7 +6640,7 @@ PostgreSQLService.addClassProperties({
 
             client.query(rawDataOperation.sql, undefined, (err, res) => {
                 //Returns the client to  the pool I assume
-                done();
+                if(done) done();
 
                 if (err) {
                     callback(err);    
@@ -6658,8 +6659,7 @@ PostgreSQLService.addClassProperties({
             if(!createDatabasePromise) {
 
                 createDatabasePromise = new Promise((resolve, reject) => {
-                    let createDatabaseOperation = { ...rawDataOperation },
-                        databaseName = createDatabaseOperation.database;
+                    let createDatabaseOperation = { ...rawDataOperation };
 
                     delete createDatabaseOperation.database;
                     delete createDatabaseOperation.schema;
@@ -6673,24 +6673,34 @@ PostgreSQLService.addClassProperties({
                         
                         Knowing that there's always a default database named "postgres", we're going to use this
                     */
-                    let tempConnection = this.clientPool.rawClientPoolConnectionOptions;
+                    let tempConnection = this.clientPool.rawClientPoolConnectionOptions,
+                        databaseName = tempConnection.database,
+                        rawPostgreSQLClient = this.clientPool.constructor.rawPostgreSQLClient;
+
+
                     tempConnection.database = "postgres";
 
-                    let tempRawClientPool = this.clientPool.createRawClientPool(tempConnection);
+                    let oneOffClient = new rawPostgreSQLClient(tempConnection);
+
+                    // let tempRawClientPool = this.clientPool.createRawClientPool(tempConnection);
 
 
-                    tempRawClientPool.connect((err, client, done) => {
+                    oneOffClient.connect((err, client, done) => {
                         createDatabaseOperation.sql = `CREATE DATABASE ${databaseName};`;
 
                         this.__createDatabaseWithClientForRawDataOperation(client, createDatabaseOperation, (err, result) => {
 
-                            if(!err) {
-                                this.clientPool.connectForDataOperation(rawDataOperation, (err, client, done) => {                    
-                                    resolve(client);
-                                });    
-                            } else {
-                                reject(err);
-                            }
+                            //Wether it worked or not, we're done trying
+                            oneOffClient.end()
+                            .then((resolvedValue) => {
+                                if(!err) {
+                                    this.clientPool.connectForDataOperation(rawDataOperation, (err, client, done) => {                    
+                                        resolve(client);
+                                    });    
+                                } else {
+                                    reject(err);
+                                }
+                            });
 
                         }, done);
                     });
@@ -6758,7 +6768,7 @@ PostgreSQLService.addClassProperties({
                             if(err.message.includes("already exists") && dataOperation.type === DataOperation.Type.CreateOperation && rawDataOperation.sql.startsWith("CREATE TABLE")) {
                                 callback(null, res);
                             } else {
-                                console.error("sendDirectStatement() client.query error: ",err);
+                                console.error("sendDirectStatement("+rawDataOperation.sql+") client.query error: ",err);
                                 callback(err);    
                             }
                         } else {
