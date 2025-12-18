@@ -497,13 +497,14 @@ PostgreSQLService.addClassProperties({
                     this.mainService.fetchData(secretQuery)
                     .then((result) => {
                         if(result && result.length > 0) {
+                            console.log("postgreSQLClientPoolWillResolveRawClientPromises - fetchData found secret: ");
                             resolve(this._loadDatabaseCredentialsFromSecret(result[0]));
                         } else {
                             console.warn("PostgreSQLService: no secret found with name: ",secretCriteria.parameters.name);
                             resolve(null);    
                         }
                     }, (error) => {
-                        //console.log("fetchData failed:",error);
+                        console.log("postgreSQLClientPoolWillResolveRawClientPromises - fetchData failed: ",error);
                         reject(error);
                     });
         
