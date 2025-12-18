@@ -476,6 +476,7 @@ PostgreSQLService.addClassProperties({
 
     postgreSQLClientPoolWillResolveRawClientPromises: {
         value: function (clientPool, promises) {
+            console.log("postgreSQLClientPoolWillResolveRawClientPromises");
             if(this.connection.secret) {
 
                 let databaseCredentials = this._loadDatabaseCredentialsFromSecret(this.connection.secret);
@@ -491,6 +492,8 @@ PostgreSQLService.addClassProperties({
                         }),
                         secretQuery = DataQuery.withTypeAndCriteria(SecretObjectDescriptor, secretCriteria);
         
+                    console.log("postgreSQLClientPoolWillResolveRawClientPromises - fetchData: ",secretCriteria);
+
                     this.mainService.fetchData(secretQuery)
                     .then((result) => {
                         if(result && result.length > 0) {
