@@ -6519,7 +6519,8 @@ PostgreSQLService.addClassProperties({
 
                             iStatement = operationSQL[i];
 
-                            if(!iStatement || iStatement === "") continue;
+                            //If we end on a null or "" we still need to wrap up
+                            if((!iStatement || iStatement === "") && (i !== lastIndex)) continue;
 
                             if( (i === lastIndex) ) {
 
