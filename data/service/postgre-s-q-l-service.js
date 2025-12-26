@@ -1973,11 +1973,18 @@ PostgreSQLService.addClassProperties({
                                         1/16/2025 : shortcut to test new logic in a specific case without impacting others for now
                                     */
                                     if(readOperation.hints?.snapshot) {
-                                        //Use the rule.
-                                        let mappingScope = iMapping._scope.nest(readOperation);
-                                        mappingScope = mappingScope.nest(readOperation.hints?.snapshot);
-            
-                                        rawDataOperation.criteria = iRawDataMappingRule.reverter.convertCriteriaForValue(iObjectRule.expression(mappingScope));
+
+                                        if(!iRawDataMappingRule.reverter.convertCriteriaForValue) {
+                                            rawCriteria = this.mapCriteriaToRawCriteria(criteria, iMapping, operationLocales, (rawExpressionJoinStatements || (rawExpressionJoinStatements = new SQLJoinStatements())));
+                                            rawDataOperation.criteria = rawCriteria;
+                                            rawDataOperation.mapping = iMapping;
+                                        } else {
+                                            //Use the rule.
+                                            let mappingScope = iMapping._scope.nest(readOperation);
+                                            mappingScope = mappingScope.nest(readOperation.hints?.snapshot);
+                
+                                            rawDataOperation.criteria = iRawDataMappingRule.reverter.convertCriteriaForValue(iObjectRule.expression(mappingScope));
+                                        }
             
         
                                     }
@@ -2135,8 +2142,7 @@ PostgreSQLService.addClassProperties({
 
                     try {
                         //Prefering rawDataOperation.criteria if we have it, as we attempt to not override the readOperation
-                        rawCriteria = this.mapCriteriaToRawCriteria(criteriaToMap, mappingToUse, operationLocales, (rawExpressionJoinStatements = new SQLJoinStatements())
-                    );
+                        rawCriteria = this.mapCriteriaToRawCriteria(criteriaToMap, mappingToUse, operationLocales, (rawExpressionJoinStatements = new SQLJoinStatements()));
 
                     } catch (error) {
                         rawDataOperation.error = error;
