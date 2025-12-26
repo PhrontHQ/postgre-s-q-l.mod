@@ -1159,8 +1159,17 @@ PostgreSQLService.addClassProperties({
 
                 objectDescriptorName = this._tableNameFromSQLStatement(rawDataOperation, error);
 
-            } else {
-                throw "_objectDescriptorNameForRawDataOperationErrorExecutingDataOperation for unkown Error"
+            } 
+            else if(error.name === DataOperationErrorNames.TransactionDeadlock) {
+                // error.where ==='while updating tuple (1,11) in relation "Organization"'
+                let tableNameStartIndex =  error.where.indexOf('relation "') + 10,
+                    tableNameEndIndex = error.where.indexOf('"',tableNameStartIndex);
+
+                objectDescriptorName = error.where.substring(tableNameStartIndex, tableNameEndIndex);
+            }
+            
+            else {
+                objectDescriptorName =  "objectDescriptorName UNHANDLED";
             }
 
             return objectDescriptorName;
@@ -1226,6 +1235,11 @@ PostgreSQLService.addClassProperties({
 
             } else if(error.code ==='22P02') {
                 error.name = DataOperationErrorNames.InvalidInput;
+                let objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation);
+                error.objectDescriptor = objectDescriptor;
+
+            } else if(error.code ==='40P01') {
+                error.name = DataOperationErrorNames.TransactionDeadlock;
                 let objectDescriptor = this._objectDescriptorForRawDataOperationErrorExecutingDataOperation(rawDataOperation, error, dataOperation);
                 error.objectDescriptor = objectDescriptor;
 
@@ -6298,6 +6312,10 @@ PostgreSQLService.addClassProperties({
         
                             });
         
+                    } else if(error.name === DataOperationErrorNames.TransactionDeadlock) {
+                        shouldRetry = false;
+                        this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
+    
                     } else {
                         shouldRetry = false;
     
