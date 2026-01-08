@@ -4400,11 +4400,14 @@ PostgreSQLService.addClassProperties({
     
                     return new Promise((resolve, reject) => {
                         console.log("createObjectDescriptorTable rawDataOperation: ",rawDataOperation.sql);
-                        this.performRawDataOperation(rawDataOperation, function (err, data) {
+                        this.performRawDataOperation(rawDataOperation, (err, data) => {
     
                             err
                             ? reject(err)
                             : resolve(data);
+
+                            //Now clear the cached promise in case we need to do it again, like someone dropping a table in our back...
+                            this._createObjectStorePromiseByObject.delete(createOperation.data);
     
                         }, createOperation);
     
@@ -6226,6 +6229,8 @@ PostgreSQLService.addClassProperties({
     _tryPerformRawTransactionForDataOperationWithClient: {
         value: function (rawTransaction, transactionOperation, client, done, responseOperation) {
             let shouldRetry = false; 
+
+            console.log("_tryPerformRawTransactionForDataOperationWithClient: \n\n*******************\n"+rawTransaction.sql+"\n*******************\n\n");
 
             if(ProcessEnv.TIME_PG === "true") {
                 var queryTimer = new Timer(`${transactionOperation.id}-${transactionOperation.type}`);
