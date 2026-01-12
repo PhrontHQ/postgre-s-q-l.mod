@@ -4754,10 +4754,6 @@ PostgreSQLService.addClassProperties({
 
                 }
 
-                if (tableName === "Person") {
-                    console.log("_mapCreateOperationToSQL: sql: "+sql, new Error("Follow the stack"));
-                    return sql;
-                }
                 console.log("_mapCreateOperationToSQL: sql: "+sql)
                 return sql;
             });
