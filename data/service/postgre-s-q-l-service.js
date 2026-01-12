@@ -1414,11 +1414,22 @@ PostgreSQLService.addClassProperties({
 
 
             //fast eliminating test to get started
+            //Bemoit 1/11/2026 - this is only covering one kind of join, id == ...
+            //we need to add arratOfIds.has($) - a single value
             if(criteriaQualifiedProperties && (rawDataPrimaryKeys.length === criteriaQualifiedProperties.length)) {
                 isReadOperationForSingleObject = rawDataPrimaryKeys.every((aPrimaryKeyProperty) => {
                     return (criteriaQualifiedProperties.indexOf(aPrimaryKeyProperty) !== -1);
                 });
+
+                //try for readOperation.criteria.expression like 'arrayOfIds.has($)' = whewre $ is the value  
+                if(isReadOperationForSingleObject === false) {
+                    isReadOperationForSingleObject = (readOperation.criteria.syntax.type === "has") && (!Array.isArray(readOperation.criteria.parameters)) && (typeof readOperation.criteria.parameters === "string");
+                }
             }
+
+            //fast eliminating test to get started
+            //Bemoit 1/11/2026 - this is more semantic and higher level.
+            // isReadOperationForSingleObject = ((readExpressions && readExpressions.length === 1) && (objectDescriptor.propertyDescriptorNamed(readExpressions[0]).cardinality === 1))
 
             /*
                 If we don't have instructions in the readOperation in term of what to return, we return all known objectDesscriptor's properties:
@@ -1605,7 +1616,7 @@ PostgreSQLService.addClassProperties({
                         /*
                             we find our primaryKey on the other side, we can just use the converter since we have the primary key value:
                         */
-                        iReadOperationCriteria = iObjectRuleConverter.convertCriteriaForValue(criteria.parameters.id);
+                        iReadOperationCriteria = iObjectRuleConverter.convertCriteriaForValue(typeof criteria.parameters === "string" ? criteria.parameters : criteria.parameters.id);
 
                         rawDataOperation.criteria = iReadOperationCriteria;
 
