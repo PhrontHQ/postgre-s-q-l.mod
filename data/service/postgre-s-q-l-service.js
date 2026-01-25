@@ -6496,6 +6496,10 @@ PostgreSQLService.addClassProperties({
                     //     // sqlMapPromises.push(Promise.resolve(this.mapReadOperationToRawStatement(iOperation, rawDataOperation)));
                     // } else
                     if (iOperation.type === updateOperationType) {
+                        //Sanity check
+                        if(Object.keys(iOperation.data).length === 0) {
+                            continue;
+                        }
                         sqlMapPromises.push(this._mapUpdateOperationToSQL(iOperation, rawDataOperation,iRecord ));
                     } else if (iOperation.type === createOperationType) {
                         sqlMapPromises.push(this._mapCreateOperationToSQL(iOperation, rawDataOperation, iRecord));
@@ -6538,7 +6542,6 @@ PostgreSQLService.addClassProperties({
                         executeStatementData = [],
                         rawTransaction,
                         startIndex,
-                        endIndex,
                         lastIndex;
 
 
@@ -6558,17 +6561,14 @@ PostgreSQLService.addClassProperties({
                             //If we end on a null or "" we still need to wrap up
                             if((!iStatement || iStatement === "") && (i !== lastIndex)) continue;
 
+                            if(iBatch.length) {
+                                iBatch = `${iBatch};\n`;
+                            }
+
                             if( (i === lastIndex) ) {
 
-                                if(i === lastIndex) {
-                                    if(iBatch.length) {
-                                        iBatch = `${iBatch};\n`;
-                                    }
-                                    iBatch = `${iBatch}${iStatement};`;
-                                    endIndex = i;
-                                } else {
-                                    endIndex = i-1;
-                                }
+                                iBatch = `${iBatch}${iStatement};`;
+                                
                                 //Time to execute what we have before it becomes too big:
                                 rawTransaction = {};
                                 Object.assign(rawTransaction,rawDataOperation);
@@ -6580,9 +6580,6 @@ PostgreSQLService.addClassProperties({
                                 iBatch = iStatement;
                                 startIndex = i;
                             } else {
-                                if(iBatch.length) {
-                                    iBatch = `${iBatch};\n`;
-                                }
                                 iBatch = `${iBatch}${iStatement}`;
                             }
                         }
