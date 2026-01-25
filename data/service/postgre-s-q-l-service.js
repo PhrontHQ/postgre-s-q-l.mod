@@ -1389,7 +1389,7 @@ PostgreSQLService.addClassProperties({
                 // readOperationsCount,
                 orderings = readOperation.data?.orderings,
                 rawOrderings,
-                readLimit = readOperation.data?.readLimit,
+                sizeLimit = readOperation.data?.sizeLimit,
                 readOffset = readOperation.data?.readOffset,
                 useDefaultExpressions = readOperation.data?.readExpressions ? false : true,
                 rawCriteria,
@@ -2208,8 +2208,8 @@ PostgreSQLService.addClassProperties({
 
                 }
 
-                if(readLimit) {
-                    sql = `${sql}  LIMIT ${readLimit}`;
+                if(sizeLimit) {
+                    sql = `${sql}  LIMIT ${sizeLimit}`;
                     if(readOffset) {
                         sql = `${sql}  OFFSET ${readOffset}`;
                     }
