@@ -6367,7 +6367,7 @@ PostgreSQLService.addClassProperties({
                     If connection fails, there's not much more we can do, we report the error 
                 */
                 if (err) {
-                    console.warn("performRawTransactionForDataOperation connectForRawDataOperation() failed with error "+ JSON.stringify(err),rawTransaction);
+                    console.warn("performRawTransactionForDataOperation connectForRawDataOperation() failed with error ", err, rawTransaction);
                     // responseOperation.type = DataOperation.Type.PerformTransactionFailedOperation;
                     responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
                             ? DataOperation.Type.CommitTransactionFailedOperation 
