@@ -457,16 +457,16 @@ PostgreSQLService.addClassProperties({
         value: function(aSecret) {
             let databaseCredentials = aSecret.value;
 
-            console.log("databaseCredentials.host is "+databaseCredentials.host);
-            console.log("databaseCredentials.username is "+databaseCredentials.username);
+            // console.debug("databaseCredentials.host is "+databaseCredentials.host);
+            // console.debug("databaseCredentials.username is "+databaseCredentials.username);
 
             this.databaseCredentials = databaseCredentials;
             if(this.clientPool) {
                 //Hard-coded custom object-mapping
                 this.clientPool.databaseCredentials = databaseCredentials;
 
-                console.log("connection.host is "+databaseCredentials.host);
-                console.log("connection.username is "+databaseCredentials.username);
+                // console.debug("connection.host is "+databaseCredentials.host);
+                // console.debug("connection.username is "+databaseCredentials.username);
 
             }
 
@@ -480,8 +480,8 @@ PostgreSQLService.addClassProperties({
             if(this.connection.secret) {
 
                 let databaseCredentials = this._loadDatabaseCredentialsFromSecret(this.connection.secret);
-                console.log("connection.host is "+databaseCredentials.host);
-                console.log("connection.username is "+databaseCredentials.username);
+                // console.debug("connection.host is "+databaseCredentials.host);
+                // console.debug("connection.username is "+databaseCredentials.username);
                 promises.push(Promise.resolve(databaseCredentials));
 
             } else {
@@ -504,7 +504,7 @@ PostgreSQLService.addClassProperties({
                             resolve(null);    
                         }
                     }, (error) => {
-                        console.log("postgreSQLClientPoolWillResolveRawClientPromises - fetchData failed: ",error);
+                        console.error("postgreSQLClientPoolWillResolveRawClientPromises - fetchData failed: ",error);
                         reject(error);
                     });
         
@@ -1226,6 +1226,7 @@ PostgreSQLService.addClassProperties({
                 {"length":160,"name":"error","severity":"ERROR","code":"22P02","detail":"Token \\"Aitriz\\" is invalid.","position":"462","where":"JSON data, line 1: Aitriz","file":"jsonfuncs.c","line":"650","routine":"json_errsave_error"} 
             */
             if(error.code ==='42601') {
+                console.error("mapRawDataOperationErrorToDataOperation rawDataOperation: ",rawDataOperation, "Error: ", error);
                 error.name = DataOperationErrorNames.SyntaxError;
                 error.cause = {
                     sql: rawDataOperation.sql
@@ -1309,7 +1310,7 @@ PostgreSQLService.addClassProperties({
                 error.rawPropertyName = rawPropertyName;
                 error.propertyDescriptor = propertyDescriptor;
 
-                console.log(objectDescriptor.name+": propertyDescriptor: ",propertyDescriptor);
+                console.error("mapRawDataOperationErrorToDataOperation rawDataOperation: ", rawDataOperation, objectDescriptor.name+": propertyDescriptor: ", propertyDescriptor.name);
             } 
             else if(doesNotExist && isDatabaseError) { //code == '3D000'
                 error.name = DataOperationErrorNames.DatabaseMissing;
@@ -4175,7 +4176,7 @@ PostgreSQLService.addClassProperties({
                         self.performRawDataOperation(rawDataOperation, function (err, data) {
                             if (err) {
                                 // an error occurred
-                                console.log(err, err.stack, rawDataOperation);
+                                console.error("createSchema() performRawDataOperation Error", err, err.stack, rawDataOperation);
                                 reject(err);
                             }
                             else {
@@ -4217,12 +4218,12 @@ PostgreSQLService.addClassProperties({
                     self.performRawDataOperation(rawDataOperation, function (err, data) {
                         if (err) {
                             // an error occurred
-                            console.log(err, err.stack, rawDataOperation);
+                            console.log("createSchemaIfNeededForCreateObjectDescriptorOperation(): - performRawDataOperation error:", err, err.stack, rawDataOperation);
                             reject(err);
                         }
                         else {
                             // successful response
-                            console.log(data);
+                            //console.log(data);
                             var result = self.useDataAPI ? data.records : data.rows,
                                 hasSchema = (result.length === 1);
 
@@ -4283,7 +4284,7 @@ PostgreSQLService.addClassProperties({
             })
             .catch((error) => {
                 // an error occurred
-                console.log(error, error.stack, rawDataOperation);
+                console.error("handleObjectStoreCreateOperation Error: ",error, error.stack, rawDataOperation);
                 operation.type = DataOperation.Type.CreateFailedOperation;
                 error.objectDescriptor = createOperation.data;
                 //Should the data be the error?
@@ -4359,7 +4360,7 @@ PostgreSQLService.addClassProperties({
             })
             .catch((error) => {
                 // an error occurred
-                console.log(error, error.stack, rawDataOperation);
+                console.error("handleObjectPropertyStoreCreateOperation() Error: ",error, error.stack, rawDataOperation);
                 operation.type = DataOperation.Type.CreateFailedOperation;
                 error.objectDescriptor = createOperation.data;
                 //Should the data be the error?
@@ -4849,7 +4850,7 @@ PostgreSQLService.addClassProperties({
                         rawDataOperation.sql = sql;
                         self.executeStatement(rawDataOperation, function (err, data) {
                             if(err) {
-                                console.error("handleCreateOperation Error",createOperation,rawDataOperation,err);
+                                console.error("handleCreateOperation() Error",createOperation,rawDataOperation,err);
                             }
                             var operation = self.mapHandledCreateResponseToOperation(createOperation, err, data, record);
     
@@ -4872,7 +4873,7 @@ PostgreSQLService.addClassProperties({
             operation.target = createOperation.target;
             if (err) {
                 // an error occurred
-                console.log(err, err.stack, createOperation);
+                console.error("mapHandledCreateResponseToOperation() Error: ", err, err.stack, createOperation);
                 operation.type = DataOperation.Type.CreateFailedOperation;
                 //Should the data be the error?
                 operation.data = err;
@@ -5166,7 +5167,7 @@ PostgreSQLService.addClassProperties({
             operation.target = objectDescriptor;
             if (err) {
                 // an error occurred
-                console.log(err, err.stack, rawDataOperation);
+                console.error("mapHandledUpdateResponseToOperation() Error: ",err, err.stack, rawDataOperation);
                 operation.type = DataOperation.Type.UpdateFailedOperation;
                 //Should the data be the error?
                 operation.data = err;
@@ -5288,7 +5289,7 @@ PostgreSQLService.addClassProperties({
             operation.target = objectDescriptor;
             if (err) {
                 // an error occurred
-                console.log(err, err.stack, rawDataOperation);
+                console.error("mapHandledDeleteResponseToOperation Error: ", err, err.stack, rawDataOperation);
                 operation.type = DataOperation.Type.DeleteFailedOperation;
                 //Should the data be the error?
                 operation.data = err;
@@ -5362,7 +5363,7 @@ PostgreSQLService.addClassProperties({
 
                     if (err) {
                         // an error occurred
-                        console.log(err, err.stack, rawDataOperation);
+                        console.error("handleCreateTransactionOperation() Error: ", err, err.stack, rawDataOperation);
                         operation.type = DataOperation.Type.CreateTransactionFailedOperation;
                         //Should the data be the error?
                         operation.data = err;
@@ -5415,7 +5416,7 @@ PostgreSQLService.addClassProperties({
                     //var response = this;
 
                     if (err) {
-                        console.error("_executeBatchStatement Error:",err, appendTransactionOperation, startIndex, endIndex, batchedOperations, rawDataOperation, rawOperationRecords, responseOperations);
+                        console.error("_executeBatchStatement Error:", err, appendTransactionOperation, startIndex, endIndex, batchedOperations, rawDataOperation, rawOperationRecords, responseOperations);
                         console.error("_executeBatchStatement Error SQL:", rawDataOperation.sql);
                         reject(err);
                     }
@@ -5962,7 +5963,7 @@ PostgreSQLService.addClassProperties({
                     operation.clientId = appendTransactionOperation.clientId;
                     operation.target = appendTransactionOperation.target;
                         // an error occurred
-                    console.log(error, error.stack, appendTransactionOperation);
+                    console.error("handleAppendTransactionOperation() Error: ", error, error.stack, appendTransactionOperation);
                     operation.type = DataOperation.Type.AppendTransactionFailedOperation;
                     //Should the data be the error?
                     // data = {
@@ -6031,7 +6032,7 @@ PostgreSQLService.addClassProperties({
                 }
                 if (err) {
                     // an error occurred
-                    console.log(err, err.stack, rawDataOperation);
+                    console.error("_handleTransactionEndOperation() Error: ", err, err.stack, rawDataOperation);
                     operation.type = transactionEndOperation.type === DataOperation.Type.CommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation : DataOperation.Type.RollbackTransactionFailedOperation;
                     //Should the data be the error?
                     operation.data = err;
@@ -6103,7 +6104,7 @@ PostgreSQLService.addClassProperties({
 
                     if (err) {
                         // an error occurred
-                        console.log(err, err.stack, rawDataOperation);
+                        console.error("handleCommitTransactionOperation() Error: ", err, err.stack, rawDataOperation);
                         operation.type = DataOperation.Type.CommitTransactionFailedOperation;
                         //Should the data be the error?
                         operation.data = err;
@@ -6154,7 +6155,7 @@ PostgreSQLService.addClassProperties({
 
                     
                         if (err) {
-                            console.error('Error rolling back client', err.stack);
+                            console.error('rollbackRawTransactionWithClientForDataOperation() Error: ', err.stack);
                             reject(err);
                             // operation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
                             //     ? DataOperation.Type.CommitTransactionFailedOperation 
@@ -6290,7 +6291,7 @@ PostgreSQLService.addClassProperties({
                         })
                         .catch((error) => {
                             shouldRetry = false;
-                            console.error('Error creating table for objectDescriptor:',objectDescriptor, error);
+                            console.error('Error creating table for objectDescriptor: ',objectDescriptor.name, error);
     
                             //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
                             responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
@@ -6315,7 +6316,7 @@ PostgreSQLService.addClassProperties({
                             })
                             .catch((error) => {
                                 shouldRetry = false;
-                                console.error('Error adding column to table for property:', objectDescriptor.name + "." + propertyDescriptor.name, error);
+                                console.error('_tryPerformRawTransactionForDataOperationWithClient() Error adding column to table for property:', objectDescriptor.name + "." + propertyDescriptor.name, error);
         
                                 //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
                                 responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
@@ -6337,7 +6338,7 @@ PostgreSQLService.addClassProperties({
                     } else {
                         shouldRetry = false;
     
-                        console.error('Error committing transaction', error, transactionOperation, rawTransaction)
+                        console.error('_tryPerformRawTransactionForDataOperationWithClient() Error committing transaction', error, transactionOperation, rawTransaction)
                         //responseOperation.type = _actAsHandleCommitTransactionOperation ? DataOperation.Type.CommitTransactionFailedOperation: DataOperation.Type.PerformTransactionFailedOperation;
                         
                         responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
@@ -6367,7 +6368,7 @@ PostgreSQLService.addClassProperties({
                     If connection fails, there's not much more we can do, we report the error 
                 */
                 if (err) {
-                    console.warn("performRawTransactionForDataOperation connectForRawDataOperation() failed with error ", err, rawTransaction);
+                    console.error("performRawTransactionForDataOperation() -> connectForRawDataOperation() failed with error ", err, rawTransaction);
                     // responseOperation.type = DataOperation.Type.PerformTransactionFailedOperation;
                     responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
                             ? DataOperation.Type.CommitTransactionFailedOperation 
@@ -6602,7 +6603,7 @@ PostgreSQLService.addClassProperties({
             })
             .catch(function (error) {
                 error.message = "rawClientPromise failed: "+error.message;
-                console.error(error);
+                console.error("handlePerformTransactionOperation() Error: ",error);
                 var responseOperation = new DataOperation();
                 responseOperation.referrerId = performTransactionOperation.id;
                 responseOperation.target = performTransactionOperation.target;
@@ -6783,7 +6784,7 @@ PostgreSQLService.addClassProperties({
                 // callback - checkout a client
                 this.connectForRawDataOperation(rawDataOperation, (err, client, done) => {
                   if (err) {
-                    console.error("sendDirectStatement() readWriteClientPool.connect error: ",err);
+                    console.error("sendDirectStatement() readWriteClientPool.connect error: ", err);
                     //call `done()` to release the client back to the pool
                     done();
 
