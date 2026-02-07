@@ -1986,7 +1986,31 @@ PostgreSQLService.addClassProperties({
                                     */
                                     if(readOperation.hints?.snapshot) {
 
+                                        //Special case for handling a single toOne with a null foreignKey: we can return null right away without bothering making a fetch
+                                        // that would find nothing!
+                                        if(criteria.name === 'rawDataPrimaryKeyCriteria' && readOperation.data.readExpressions.length === 1 && iPropertyDescriptor.name === readOperation.data.readExpressions[0] && iPropertyDescriptor.cardinality === 1 && readOperation.hints?.snapshot[iTargetPath] === null) {
+                                            return null;
+                                        }
+
+                                        /* Thus is a use-case where there is no known inverse relationship */ 
                                         if(!iRawDataMappingRule.reverter.convertCriteriaForValue) {
+                                            /*
+                                                #FIXME
+                                                UserIdentity fetching timezone bug, this ends up generating:
+
+                                                
+                                                This block doesn't use the snapshot value that is there, but it should, 
+                                                which is most likely part of the bug in mapCriteriaToRawCriteria(), building the wrong SQL
+
+                                                Otherwise, since we have the id of the UserIdenity that wants its timeZone, we should output something like
+                                                SELECT DISTINCT (SELECT to_jsonb(_) FROM (SELECT "TimeZone"."id","TimeZone"."identifier") as _) 
+                                                FROM "fordpath_v1"."TimeZone"
+                                                JOIN "fordpath_v1"."UserIdentity" ON "UserIdentity".zoneinfo = "TimeZone"."id" 
+                                                WHERE ("UserIdentity"."id" = '1ea439e5-92ff-47cb-a23f-d4a5c9cc41fd')
+
+                                                Where we join on the known mapping and add the comparison to the source id.
+                                                It's not as efficient as having the snapshot value, but it will work.
+                                            */
                                             rawCriteria = this.mapCriteriaToRawCriteria(criteria, iMapping, operationLocales, (rawExpressionJoinStatements || (rawExpressionJoinStatements = new SQLJoinStatements())));
                                             rawDataOperation.criteria = rawCriteria;
                                             rawDataOperation.mapping = iMapping;
