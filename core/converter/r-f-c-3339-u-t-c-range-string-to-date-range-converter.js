@@ -4,7 +4,8 @@
  */
 var Converter = require("mod/core/converter/converter").Converter,
     Range = require("mod/core/range").Range,
-    ISO8601DateStringToDateComponentValuesCallbackConverter = require("mod/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
+    // ISO8601DateStringToDateComponentValuesCallbackConverter = require("mod/core/converter/i-s-o-8601-date-string-to-date-component-values-callback-converter").ISO8601DateStringToDateComponentValuesCallbackConverter,
+    ISO8601FormattedStringToDateConverter = require("mod/core/converter/i-s-o-8601-formatted-string-to-date-converter").ISO8601FormattedStringToDateConverter,
     singleton;
 
     //ISO 8601
@@ -23,12 +24,13 @@ var RFC3339UTCRangeStringToDateRangeConverter = exports.RFC3339UTCRangeStringToD
             if (this.constructor === RFC3339UTCRangeStringToDateRangeConverter) {
                 if (!singleton) {
                     singleton = this;
-                    this._stringConverter = new ISO8601DateStringToDateComponentValuesCallbackConverter();
 
-                    this._stringConverter.callback = function dateConverter(year, month, day, hours, minutes, seconds, milliseconds) {
-                        return new Date(Date.UTC(year, --month, day, hours, minutes, seconds, milliseconds));
-                    };
+                    // this._stringConverter = new ISO8601DateStringToDateComponentValuesCallbackConverter();
+                    // this._stringConverter.callback = function dateConverter(year, month, day, hours, minutes, seconds, milliseconds) {
+                    //     return new Date(Date.UTC(year, --month, day, hours, minutes, seconds, milliseconds));
+                    // };
 
+                    this._stringConverter = new ISO8601FormattedStringToDateConverter();
                     this._rangeParser = this._stringConverter.convert.bind(this._stringConverter);
                 }
 
