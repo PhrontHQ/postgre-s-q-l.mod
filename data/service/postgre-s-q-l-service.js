@@ -3185,14 +3185,6 @@ PostgreSQLService.addClassProperties({
         value: function (propertyDescriptor, value, rawPropertyName, type, dataOperation) {
             var mappedValue = this.mapPropertyDescriptorValueToRawValue(propertyDescriptor, value, rawPropertyName, type, dataOperation);
 
-            if (rawPropertyName === "preferredNextRoleIds") {
-                console.log("Person.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression", {
-                    value: value,
-                    rawPropertyName: rawPropertyName,
-                    dataOperation: dataOperation,
-                    mappedValue: mappedValue
-                })
-            }
             // if(mappedValue !== "NULL" && (Array.isArray(value) || typeof value === "string")) {
             //   return `'${mappedValue}'`;
             // }
