@@ -3184,6 +3184,15 @@ PostgreSQLService.addClassProperties({
     mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression: {
         value: function (propertyDescriptor, value, rawPropertyName, type, dataOperation) {
             var mappedValue = this.mapPropertyDescriptorValueToRawValue(propertyDescriptor, value, rawPropertyName, type, dataOperation);
+
+            if (rawPropertyName === "preferredNextRoleIds") {
+                console.log("Person.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression", {
+                    value: value,
+                    rawPropertyName: rawPropertyName,
+                    dataOperation: dataOperation,
+                    mappedValue: mappedValue
+                })
+            }
             // if(mappedValue !== "NULL" && (Array.isArray(value) || typeof value === "string")) {
             //   return `'${mappedValue}'`;
             // }
@@ -4181,6 +4190,7 @@ PostgreSQLService.addClassProperties({
                     require.async("../raw-model/install-postGIS-sql-format"),
                     require.async("../raw-model/install-postgresql-anyarray_remove-sql-format"),
                     require.async("../raw-model/install-postgresql-anyarray_concat_uniq-sql-format"),
+                    require.async("../raw-model/install-postgresql-anyarray_splice_uniq-sql-format"),
                     require.async("../raw-model/install-postgresql-intervalrange-sql-format"),
                     require.async("../raw-model/create-postgresql-map-entry-type-sql-format")
                 ])
@@ -4191,7 +4201,9 @@ PostgreSQLService.addClassProperties({
                     ${resolvedValues[0].format("public")}
                     ${resolvedValues[1].format(schemaName)}
                     ${resolvedValues[2].format(schemaName)}
-                    ${resolvedValues[3].format(schemaName)}`;
+                    ${resolvedValues[3].format(schemaName)}
+                    ${resolvedValues[4].format(schemaName)}
+                    ${resolvedValues[5].format(schemaName)}`;
 
                     self.mapConnectionToRawDataOperation(rawDataOperation);
                     rawDataOperation.sql = sql;
@@ -5075,15 +5087,17 @@ PostgreSQLService.addClassProperties({
                 if (iValue == null) {
                     iAssignment = `${iKeyEscaped} = NULL`;
                 } else {
-                    iHasAddedValue = iValue.hasOwnProperty("addedValues")
+                    iHasAddedValues = iValue.hasOwnProperty("addedValues")
                     iHasRemovedValues = iValue.hasOwnProperty("removedValues")
-                    if ((iHasAddedValue) && (iHasRemovedValues)) {
+                    iHasIndex = iValue.hasOwnProperty("index")
+                    if (iHasIndex && iHasAddedValues) {
                         let addMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
-                        let removeMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
+                        let deleteCount = iHasRemovedValues ? iValue.removedValues.length : 0;
 
-                        iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_remove( ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${addMappedValue}),${removeMappedValue})`;
+                        iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, ${iValue.index+1}, ${deleteCount}, ${addMappedValue})`;
                     }
-                    else if (iHasAddedValue) {
+                    //Is this still used or can we assume that every event with addedValues also has an index?
+                    else if (iHasAddedValues) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${iMappedValue})`;
                     }
@@ -5091,7 +5105,7 @@ PostgreSQLService.addClassProperties({
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_remove(${iKeyEscaped}, ${iMappedValue})`;
                     }
-                    else if (!iHasAddedValue && !iHasRemovedValues) {
+                    else if (!iHasAddedValues && !iHasRemovedValues) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKeyEscaped, iRawType, updateOperation);
                     //iAssignment = `${iKey} = '${iValue}'`;
                         iAssignment = `${iKeyEscaped} ${"="} ${iMappedValue}`;
