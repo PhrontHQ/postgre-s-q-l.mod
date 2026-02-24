@@ -1,6 +1,6 @@
 exports.format = (schema) => {
 
-    return `DROP FUNCTION IF EXISTS "${schema}".anyarray_splice(anyarray, integer, anyarray);
+    return `DROP FUNCTION IF EXISTS "${schema}".anyarray_splice(input_array anyarray, start_index integer, delete_count integer, insert_items anyarray);
     CREATE OR REPLACE FUNCTION "${schema}".anyarray_splice(input_array anyarray, start_index integer, delete_count integer, insert_items anyarray)
         RETURNS anyarray AS
     $BODY$
