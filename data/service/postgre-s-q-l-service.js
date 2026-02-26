@@ -59,6 +59,8 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     ReadOnlyPostgreSQLClientPool,
     ProcessEnv = process.env;
 
+let RAW_MODEL_PATH = "../raw-model/";
+
 
 
 // assume a role using the sourceCreds
@@ -1137,6 +1139,27 @@ PostgreSQLService.addClassProperties({
         }
     },
 
+    _functionRegExp: {
+        value: /function\s*([\w\d\_\.]*)\(/
+    },
+    /**
+     * Returns the function name extracted from the passed SQL statement screen
+     *
+     *  ... schema.function_name ...
+     * 
+     * @private
+     * @argument {DataStream} dataStream
+     */
+    _functionNameFromSQLStatement: {
+        value: function(rawDataOperation, error) {
+            let schemaPrefix = `"${rawDataOperation.schema}"."`,
+                match = this._functionRegExp.exec(error.message),
+                functionName = match && match[1];
+
+            return functionName && functionName.replace(schemaPrefix, "");
+        }
+    },
+
     _objectDescriptorNameForRawDataOperationErrorExecutingDataOperation: {
         value: function(rawDataOperation, error, dataOperation) {
             let message = error.message,
@@ -1311,8 +1334,13 @@ PostgreSQLService.addClassProperties({
                 error.propertyDescriptor = propertyDescriptor;
 
                 console.error("mapRawDataOperationErrorToDataOperation rawDataOperation: ", rawDataOperation, objectDescriptor.name+": propertyDescriptor: ", propertyDescriptor.name);
-            } 
-            else if(doesNotExist && isDatabaseError) { //code == '3D000'
+            } else if (error.code === "42883" && doesNotExist) {
+                error.name = DataOperationErrorNames.FunctionMissing;
+                error.cause = {
+                    sql: rawDataOperation.sql,
+                    functionName: this._functionNameFromSQLStatement(rawDataOperation, error)
+                };
+            } else if(doesNotExist && isDatabaseError) { //code == '3D000'
                 error.name = DataOperationErrorNames.DatabaseMissing;
             }
             return error;
@@ -4181,6 +4209,7 @@ PostgreSQLService.addClassProperties({
                     require.async("../raw-model/install-postGIS-sql-format"),
                     require.async("../raw-model/install-postgresql-anyarray_remove-sql-format"),
                     require.async("../raw-model/install-postgresql-anyarray_concat_uniq-sql-format"),
+                    require.async("../raw-model/install-postgresql-anyarray_splice-sql-format"),
                     require.async("../raw-model/install-postgresql-intervalrange-sql-format"),
                     require.async("../raw-model/create-postgresql-map-entry-type-sql-format")
                 ])
@@ -4191,7 +4220,9 @@ PostgreSQLService.addClassProperties({
                     ${resolvedValues[0].format("public")}
                     ${resolvedValues[1].format(schemaName)}
                     ${resolvedValues[2].format(schemaName)}
-                    ${resolvedValues[3].format(schemaName)}`;
+                    ${resolvedValues[3].format(schemaName)}
+                    ${resolvedValues[4].format(schemaName)}
+                    ${resolvedValues[5].format(schemaName)}`;
 
                     self.mapConnectionToRawDataOperation(rawDataOperation);
                     rawDataOperation.sql = sql;
@@ -4216,6 +4247,34 @@ PostgreSQLService.addClassProperties({
 
             return createSchemaPromise;
 
+        }
+    },
+
+    _installDatabaseFunctionWithNameInSchema: {
+        value: function (functionName, schemaName) {
+            functionName = functionName.replace(schemaName + ".", "");
+            let pathToFunctionDefinition = `${RAW_MODEL_PATH}install-postgresql-${functionName}-sql-format`,
+                self = this;
+            return require.async(pathToFunctionDefinition).then((fnDefinition) => {
+                let sql = fnDefinition.format(schemaName),
+                    rawDataOperation = {};
+
+                this.mapConnectionToRawDataOperation(rawDataOperation);
+                rawDataOperation.sql = sql;
+
+                return new Promise(function(resolve, reject) {
+                    self.performRawDataOperation(rawDataOperation, function (err, data) {
+                        if (err) {
+                            // an error occurred
+                            console.error("createFunction() performRawDataOperation Error", err, err.stack, rawDataOperation);
+                            reject(err);
+                        }
+                        else {
+                            resolve(true);
+                        }
+                    });
+                });
+            });
         }
     },
 
@@ -4981,9 +5040,8 @@ PostgreSQLService.addClassProperties({
                 recordKeys = Object.keys(dataChanges),
                 setRecordKeys = Array(recordKeys.length),
                 // sqlColumns = recordKeys.join(","),
-                i, countI, iKey, iKeyEscaped, iValue, iMappedValue, iAssignment, iRawType, iPropertyDescriptor, iPrimaryKey,
-                iHasAddedValue, iHasRemovedValues, iPrimaryKeyValue,
-                iKeyValue,
+                i, countI, iKey, iKeyEscaped, iValue, iMappedValue, iAssignment, iRawType, iPropertyDescriptor, 
+                iHasAddedValues, iHasRemovedValues, iHasIndex,
                 dataSnapshot = updateOperation.snapshot,
                 dataSnapshotKeys = dataSnapshot ? Object.keys(dataSnapshot) : null,
                 condition,
@@ -5075,15 +5133,17 @@ PostgreSQLService.addClassProperties({
                 if (iValue == null) {
                     iAssignment = `${iKeyEscaped} = NULL`;
                 } else {
-                    iHasAddedValue = iValue.hasOwnProperty("addedValues")
+                    iHasAddedValues = iValue.hasOwnProperty("addedValues")
                     iHasRemovedValues = iValue.hasOwnProperty("removedValues")
-                    if ((iHasAddedValue) && (iHasRemovedValues)) {
+                    iHasIndex = iValue.hasOwnProperty("index")
+                    if (iHasIndex && iHasAddedValues) {
                         let addMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
-                        let removeMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
+                        let deleteCount = iHasRemovedValues ? iValue.removedValues.length : 0;
 
-                        iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_remove( ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${addMappedValue}),${removeMappedValue})`;
+                        iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, ${iValue.index+1}, ${deleteCount}, ${addMappedValue})`;
                     }
-                    else if (iHasAddedValue) {
+                    //Is this still used or can we assume that every event with addedValues also has an index?
+                    else if (iHasAddedValues) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${iMappedValue})`;
                     }
@@ -5091,7 +5151,7 @@ PostgreSQLService.addClassProperties({
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.removedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_remove(${iKeyEscaped}, ${iMappedValue})`;
                     }
-                    else if (!iHasAddedValue && !iHasRemovedValues) {
+                    else if (!iHasAddedValues && !iHasRemovedValues) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKeyEscaped, iRawType, updateOperation);
                     //iAssignment = `${iKey} = '${iValue}'`;
                         iAssignment = `${iKeyEscaped} ${"="} ${iMappedValue}`;
@@ -6355,7 +6415,26 @@ PostgreSQLService.addClassProperties({
         
                             });
         
-                    } else if(error.name === DataOperationErrorNames.TransactionDeadlock) {
+                    } else if (error.name === DataOperationErrorNames.FunctionMissing) {
+                        let functionName = error.cause && error.cause.functionName;
+                        return this._installDatabaseFunctionWithNameInSchema(functionName, rawTransaction.schema).then(() => {
+                            this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
+                        }).catch((error) => {
+                            shouldRetry = false;
+                            console.error('_tryPerformRawTransactionForDataOperationWithClient() Error adding function with name: ', functionName);
+        
+                                //Repeat block from bellow, neeed to have something like responseOperationForReadOperation() to do it once there
+                            responseOperation.type = transactionOperation.type ===  DataOperation.Type.CommitTransactionOperation 
+                            ? DataOperation.Type.CommitTransactionFailedOperation 
+                            : DataOperation.Type.PerformTransactionFailedOperation
+                            responseOperation.data = error;
+    
+                            // release the client back to the pool
+                            done();
+    
+                            responseOperation.target.dispatchEvent(responseOperation);
+                        })
+                    } else if (error.name === DataOperationErrorNames.TransactionDeadlock) {
                         shouldRetry = false;
                         this._tryPerformRawTransactionForDataOperationWithClient(rawTransaction, transactionOperation, client, done, responseOperation);
     
