@@ -4221,8 +4221,8 @@ PostgreSQLService.addClassProperties({
                     ${resolvedValues[1].format(schemaName)}
                     ${resolvedValues[2].format(schemaName)}
                     ${resolvedValues[3].format(schemaName)}
-                    ${resolvedValues[4].format(schemaName)}
-                    ${resolvedValues[5].format(schemaName)}`;
+                    ${resolvedValues[4].format(schemaName)}`;
+                    //${resolvedValues[5].format(schemaName)} should not be used right now, it needs more arguments to run and need to be re-thought
 
                     self.mapConnectionToRawDataOperation(rawDataOperation);
                     rawDataOperation.sql = sql;
