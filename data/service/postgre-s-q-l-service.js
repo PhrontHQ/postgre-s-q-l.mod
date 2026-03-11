@@ -2366,7 +2366,7 @@ PostgreSQLService.addClassProperties({
 
                 readOperationExecutedCount++;
 
-                isNotLast = (readOperationsCount - readOperationExecutedCount + 1/*the current/main one*/) > 0;
+                isNotLast = (readOperationsCount - readOperationExecutedCount/* + 1/*the current/main one*/) > 0;
 
                 if(err) {
                     // console.error("handleReadOperation Error: readOperation:",readOperation, "rawDataOperation: ",rawDataOperation, "error: ",err);
@@ -2518,7 +2518,7 @@ PostgreSQLService.addClassProperties({
                 });
             }
 
-            readOperationsCount = readOperations?.length || 0;
+            readOperationsCount = readOperations?.length || 1//rawDataOperation should be always there, so we have readOperationsCount === 1;
 
             // if(readOperation.target.name === "ServiceEngagement") {
             //     if(readOperation.criteria && readOperation.criteria.expression) {
@@ -2557,7 +2557,7 @@ PostgreSQLService.addClassProperties({
             firstPromise.then(function(firstReadUpdateOperation) {
                 readOperationExecutedCount = firstReadUpdateOperation.readOperationExecutedCount;
 
-                if(readOperationsCount > 0) {
+                if(readOperationsCount > 1) {
 
                     for(i=0, countI = readOperationsCount;(i<countI); i++) {
                         iReadOperation = readOperations[i];
