@@ -1333,7 +1333,7 @@ PostgreSQLService.addClassProperties({
                 error.rawPropertyName = rawPropertyName;
                 error.propertyDescriptor = propertyDescriptor;
 
-                console.error("mapRawDataOperationErrorToDataOperation rawDataOperation: ", rawDataOperation, objectDescriptor.name+": propertyDescriptor: ", propertyDescriptor.name);
+                console.error("mapRawDataOperationErrorToDataOperation rawDataOperation: ", rawDataOperation, objectDescriptor.name+": propertyDescriptor: ", propertyDescriptor?.name);
             } else if (error.code === "42883" && doesNotExist) {
                 error.name = DataOperationErrorNames.FunctionMissing;
                 error.cause = {
