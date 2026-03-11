@@ -3166,7 +3166,7 @@ PostgreSQLService.addClassProperties({
 
     mapPropertyDescriptorValueToRawValue: {
         value: function (propertyDescriptor, value, rawPropertyName, type, dataOperation) {
-            if (value === null || value === "" || value === undefined) {
+            if (value === null || value === undefined) {
                 return "NULL";
             }
             else if (typeof value === "string") {
@@ -5088,11 +5088,12 @@ PostgreSQLService.addClassProperties({
                     // The reason we check for the empty string '' here, is because our implementation in postgres uses NULL to indicate that a value has not been set.
                     // If a user deletes the value in the UI, we are asked to update the value to an empty string - however, we really want it to be 'not set', as the user is not supplying a value.
                     // TODO: Should this empty string-<->null logic happen here? IMO The iValue should probably be set to null before being passed in here, which would make this === '' check unnescessary.
-                    if(iValue === undefined || iValue === null || iValue === '' )  {
+                    let mappedRawPropertyValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, updateOperation);
+                    if(mappedRawPropertyValue === "NULL" || mappedRawPropertyValue === "null")  {
                         //TODO: this needs to be taken care of in pgstringify as well for criteria. The problem is the operator changes based on value...
-                        condition = `${condition}"${tableName}".${escapeIdentifier(iKey)} is ${this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, updateOperation)}`;
+                        condition = `${condition}"${tableName}".${escapeIdentifier(iKey)} is ${mappedRawPropertyValue}`;
                     } else {
-                        condition = `${condition}"${tableName}".${escapeIdentifier(iKey)} = ${this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue, iKey, iRawType, updateOperation)}`;
+                        condition = `${condition}"${tableName}".${escapeIdentifier(iKey)} = ${mappedRawPropertyValue}`;
                     }
                 }
             }
