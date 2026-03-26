@@ -84,7 +84,7 @@ function arrayString (val, type, depth) {
 // to their 'raw' counterparts for use as a postgres parameter
 // note: you can override this function to provide your own conversion mechanism
 // for complex types, etc...
-var prepareValue = function (val, type, seen, depth = 0) {
+var prepareValue = function (val, type, propertyDescriptor, depth = 0, seen) {
     if (val instanceof Buffer) {
         return val
     }
@@ -125,16 +125,23 @@ var prepareValue = function (val, type, seen, depth = 0) {
     if (Array.isArray(val)) {
         return arrayString(val,type, depth++);
     }
-    if (val === null || typeof val === 'undefined') {
+    if (typeof val === 'undefined') {
         return null;
     }
+    if (val === null) {
+        // if() {
+
+        // } else {
+            return null;
+        // }
+    }
     if (typeof val === 'object') {
-        return prepareObject(val, seen, type, depth++);
+        return prepareObject(val, propertyDescriptor, type, depth++, seen);
     }
     return val.toString();
 }
 
-function prepareObject (val, seen, type, depth) {
+function prepareObject (val, propertyDescriptor, type, depth, seen) {
     if (val && typeof val.toPostgres === 'function') {
         seen = seen || []
         if (seen.indexOf(val) !== -1) {
@@ -142,7 +149,7 @@ function prepareObject (val, seen, type, depth) {
         }
         seen.push(val);
 
-        return prepareValue(val.toPostgres(prepareValue), seen, ++depth);
+        return prepareValue(val.toPostgres(prepareValue), propertyDescriptor, ++depth, seen);
     }
     if(type === "jsonb") {
         return depth > 0 ? JSON.stringify(val) : escapeString(JSON.stringify(val), "string");

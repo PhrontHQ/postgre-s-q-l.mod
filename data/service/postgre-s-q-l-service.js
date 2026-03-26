@@ -3164,12 +3164,21 @@ PostgreSQLService.addClassProperties({
         value: 10
     },
 
+    uuidNoValue: {
+        value: `'${uuid.Uuid.noValue}'`
+    },
     mapPropertyDescriptorValueToRawValue: {
         value: function (propertyDescriptor, value, rawPropertyName, type, dataOperation) {
-            if (value === null || value === undefined) {
+            if (value === undefined) {
                 return "NULL";
-            }
-            else if (typeof value === "string") {
+            } else if(value === null) {
+                if(type === "uuid") {
+                    //That's not a great exports... Just saying @marchant...
+                    return this.uuidNoValue;
+                } else {
+                    return "NULL";
+                }
+            } else if (typeof value === "string") {
                 /*
                     Modeled after:
                     https://www.postgresql.fastware.com/blog/further-protect-your-data-with-pgcrypto
