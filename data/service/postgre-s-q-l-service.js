@@ -3173,8 +3173,13 @@ PostgreSQLService.addClassProperties({
                 return "NULL";
             } else if(value === null) {
                 if(type === "uuid") {
-                    //That's not a great exports... Just saying @marchant...
-                    return this.uuidNoValue;
+                    //If it's an update, we need to respect the snapshot's value, that was returned when initially fetched, otherwise the update won't work
+                    if(dataOperation.type === DataOperation.Type.UpdateOperation && dataOperation.snapshot[rawPropertyName] === null) {
+                        return "NULL";
+                    } else {
+                        //That's not a great exports... Just saying @marchant...
+                        return this.uuidNoValue;
+                    }
                 } else {
                     return "NULL";
                 }
