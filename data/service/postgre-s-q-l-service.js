@@ -3232,6 +3232,44 @@ PostgreSQLService.addClassProperties({
             return mappedValue;
         }
     },
+
+
+    /****
+     * TJ 4-10-26
+     * 
+     * This implementation assumes the changes array has the form {index: number, addedValues: Array, removedValues: Array}
+     * 
+     * That may not be the case for properties whose type is Set, Map, etc. This function should use the propertyDescriptor 
+     * to get the type and determine the appropriate way to map the change
+     */
+    mapCollectionChangesToJSONB: {
+        value: function (propertyDescriptor, changes, rawPropertyName, type, dataOperation) {
+            let allActions =  changes.map((action) => {
+                let removedCount = action.removedValues ? action.removedValues.length : 0,
+                    index = isNaN(action.index) ? 0 : parseInt(action.index),
+                    mapped = "[" + (index + 1) + "," + removedCount,
+                    i, count, iValue;
+
+                if (action.addedValues && action.addedValues.length) {
+                    for (i = 0, count = action.addedValues.length; i < count; i++) {
+                        mapped += ",";
+                        if (action.addedValues[i] === null) {
+                            iValue = "null";
+                        } else if (typeof action.addedValues[i] === "string") {
+                            //Does this need to be escaped?
+                            iValue = `"${action.addedValues[i]}"`;
+                        } else {
+                            iValue = action.addedValues[i];
+                        }
+                        mapped += iValue;
+                    }
+                } 
+                mapped += "]";
+                return mapped;
+            });
+            return `[${allActions.join(',')}]`;
+        }
+    },
     // mapPropertyDescriptorValueToRawValue: {
     //     value: function (propertyDescriptor, value, type) {
     //         if (value == null || value == "") {
@@ -5055,7 +5093,7 @@ PostgreSQLService.addClassProperties({
                 setRecordKeys = Array(recordKeys.length),
                 // sqlColumns = recordKeys.join(","),
                 i, countI, iKey, iKeyEscaped, iValue, iMappedValue, iAssignment, iRawType, iPropertyDescriptor, 
-                iHasAddedValues, iHasRemovedValues, iHasIndex,
+                iHasAddedValues, iHasRemovedValues, iHasIndex, iHasMultipleChanges
                 dataSnapshot = updateOperation.snapshot,
                 dataSnapshotKeys = dataSnapshot ? Object.keys(dataSnapshot) : null,
                 condition,
@@ -5150,14 +5188,20 @@ PostgreSQLService.addClassProperties({
                 } else {
                     iHasAddedValues = iValue.hasOwnProperty("addedValues")
                     iHasRemovedValues = iValue.hasOwnProperty("removedValues")
+                    iHasMultipleChanges = iValue.hasOwnProperty("changes")
                     iHasIndex = iValue.hasOwnProperty("index")
-                    if (iHasIndex && iHasAddedValues) {
+                    if (iHasMultipleChanges) {
+                        let mappedActions = this.mapCollectionChangesToJSONB(iPropertyDescriptor, iValue.changes, iKeyEscaped, iRawType, updateOperation);
+
+                        iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, '${mappedActions}'::jsonb)`;
+                    }
+                    //Can these be removed? 
+                    else if (iHasIndex && iHasAddedValues) {
                         let addMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
                         let deleteCount = iHasRemovedValues ? iValue.removedValues.length : 0;
 
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, ${iValue.index+1}, ${deleteCount}, ${addMappedValue})`;
                     }
-                    //Is this still used or can we assume that every event with addedValues also has an index?
                     else if (iHasAddedValues) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${iMappedValue})`;
