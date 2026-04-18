@@ -498,6 +498,24 @@ PostgreSQLService.addClassProperties({
 
                     this.mainService.fetchData(secretQuery)
                     .then((result) => {
+                        
+                        /*
+                            The secret's value is expected to have the shape:
+
+                            {
+                                "username":"",//Auth - Identity
+                                "password":"",//Auth - Identity
+                                "clientPrivateKey":"base64-encoded-clientPrivateKey-content", //Auth - Identity
+                                "clientCertificate":"base64-encoded-clientCertificate-content" //Auth - Identity
+                                "engine":"postgres", //Connection (location?)
+                                "host":"--ip-address--", //Connection (location?)
+                                "port":5432, //Connection (location?)
+                                "endpointIdentifier":"", //Connection (location?)
+                            }
+                        */
+
+
+
                         if(result && result.length > 0) {
                             console.log("postgreSQLClientPoolWillResolveRawClientPromises - fetchData found secret: ");
                             resolve(this._loadDatabaseCredentialsFromSecret(result[0]));
