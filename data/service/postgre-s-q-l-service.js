@@ -3237,37 +3237,49 @@ PostgreSQLService.addClassProperties({
     /****
      * TJ 4-10-26
      * 
-     * This implementation assumes the changes array has the form {index: number, addedValues: Array, removedValues: Array}
+     * This implementation assumes the changes array contains objects with the shape {index: number, addedValues: Array, removedValues: Array}
      * 
      * That may not be the case for properties whose type is Set, Map, etc. This function should use the propertyDescriptor 
      * to get the type and determine the appropriate way to map the change
      */
     mapCollectionChangesToJSONB: {
         value: function (propertyDescriptor, changes, rawPropertyName, type, dataOperation) {
-            let allActions =  changes.map((action) => {
-                let removedCount = action.removedValues ? action.removedValues.length : 0,
-                    index = isNaN(action.index) ? 0 : parseInt(action.index),
-                    mapped = "[" + (index + 1) + "," + removedCount,
-                    i, count, iValue;
 
-                if (action.addedValues && action.addedValues.length) {
-                    for (i = 0, count = action.addedValues.length; i < count; i++) {
+            let allActions;
+            for(let i=0, iCount=changes.length, action; (i<iCount); i++) {
+                action = changes[i];
+                let removedCount = action.removedValues ? action.removedValues.length : 0,
+                    hasAddedValues = action.addedValues && action.addedValues.length,
+                    hasChanges = (hasAddedValues || removedCount > 0),
+                    index = isNaN(action.index) ? 0 : parseInt(action.index),
+                    mapped = null;
+
+                if(hasChanges) {
+                    mapped = "[" + (index + 1) + "," + removedCount;
+                }
+
+                if (hasAddedValues) {
+                    for (let ii = 0, iiCount = action.addedValues.length, iiValue; ii < iiCount; ii++) {
                         mapped += ",";
-                        if (action.addedValues[i] === null) {
-                            iValue = "null";
-                        } else if (typeof action.addedValues[i] === "string") {
+                        if (action.addedValues[ii] === null) {
+                            iiValue = "null";
+                        } else if (typeof action.addedValues[ii] === "string") {
                             //Does this need to be escaped?
-                            iValue = `"${action.addedValues[i]}"`;
+                            iiValue = `"${action.addedValues[ii]}"`;
                         } else {
-                            iValue = action.addedValues[i];
+                            iiValue = action.addedValues[ii];
                         }
-                        mapped += iValue;
+                        mapped += iiValue;
                     }
                 } 
-                mapped += "]";
-                return mapped;
-            });
-            return `[${allActions.join(',')}]`;
+                if(hasChanges) {
+                    mapped += "]";
+
+                    (allActions || (allActions = [])).push(mapped);
+                }
+
+            }
+            return allActions ? `[${allActions.join(',')}]` : null;
         }
     },
     // mapPropertyDescriptorValueToRawValue: {
@@ -5090,10 +5102,12 @@ PostgreSQLService.addClassProperties({
                 tableName = this.tableForObjectDescriptor(objectDescriptor),
                 schemaName = rawDataOperation.schema,
                 recordKeys = Object.keys(dataChanges),
-                setRecordKeys = Array(recordKeys.length),
+                //No, because sometime we get changes that are nothing...
+                //setRecordKeys = Array(recordKeys.length),
+                setRecordKeys,
                 // sqlColumns = recordKeys.join(","),
                 i, countI, iKey, iKeyEscaped, iValue, iMappedValue, iAssignment, iRawType, iPropertyDescriptor, 
-                iHasAddedValues, iHasRemovedValues, iHasIndex, iHasMultipleChanges
+                iHasAddedValues, iHasRemovedValues, iHasIndex, iHasMultipleChanges,
                 dataSnapshot = updateOperation.snapshot,
                 dataSnapshotKeys = dataSnapshot ? Object.keys(dataSnapshot) : null,
                 condition,
@@ -5192,8 +5206,9 @@ PostgreSQLService.addClassProperties({
                     iHasIndex = iValue.hasOwnProperty("index")
                     if (iHasMultipleChanges) {
                         let mappedActions = this.mapCollectionChangesToJSONB(iPropertyDescriptor, iValue.changes, iKeyEscaped, iRawType, updateOperation);
-
-                        iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, '${mappedActions}'::jsonb)`;
+                        if(mappedActions) {
+                            iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, '${mappedActions}'::jsonb)`;
+                        }
                     }
                     //Can these be removed? 
                     else if (iHasIndex && iHasAddedValues) {
@@ -5217,7 +5232,9 @@ PostgreSQLService.addClassProperties({
                     }
                 }
 
-                setRecordKeys[i] = iAssignment;
+                if(iAssignment) {
+                    (setRecordKeys || (setRecordKeys = []))[i] = iAssignment;
+                }
             }
 
             if (!setRecordKeys || setRecordKeys.length === 0) {
@@ -6730,7 +6747,9 @@ PostgreSQLService.addClassProperties({
 
                             if( (i === lastIndex) ) {
 
-                                iBatch = `${iBatch}${iStatement};`;
+                                if(iStatement) {
+                                    iBatch = `${iBatch}${iStatement};`;
+                                }
                                 
                                 //Time to execute what we have before it becomes too big:
                                 rawTransaction = {};
