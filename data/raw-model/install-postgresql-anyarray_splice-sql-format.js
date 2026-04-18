@@ -1,3 +1,5 @@
+
+
 exports.format = (schema) => {
 
     return `DROP FUNCTION IF EXISTS "${schema}".anyarray_splice(input_array anyarray, start_index integer, delete_count integer, insert_items anyarray);
@@ -65,5 +67,76 @@ exports.format = (schema) => {
 
             RETURN return_array;
         END;
-    $BODY$ LANGUAGE plpgsql;`
+    $BODY$ LANGUAGE plpgsql;
+
+    
+    DROP FUNCTION IF EXISTS "${schema}".anyarray_splice(anyarray, jsonb);
+    CREATE OR REPLACE FUNCTION "${schema}".anyarray_splice(
+        input_array anyarray,
+        splice_ops jsonb
+    )
+    RETURNS anyarray AS
+    $BODY$
+    DECLARE
+        result_array input_array%TYPE;
+        op jsonb;
+
+        start_index integer;
+        delete_count integer;
+        insert_items input_array%TYPE;
+
+        array_type_text text;
+        empty_same  input_array%TYPE;
+    BEGIN
+        IF splice_ops IS NULL OR jsonb_typeof(splice_ops) <> 'array' THEN
+            RAISE EXCEPTION 'splice_ops must be a JSON array';
+        END IF;
+
+        IF input_array IS NULL THEN
+            empty_same := insert_items[0:-1];
+            input_array := empty_same; -- treat NULL as empty array for splicing
+        END IF;
+
+        result_array := input_array;
+        array_type_text := pg_typeof(input_array)::text;
+
+        FOR op IN
+            SELECT value
+            FROM jsonb_array_elements(splice_ops)
+        LOOP
+            IF jsonb_typeof(op) <> 'array' THEN
+                RAISE EXCEPTION 'Each splice operation must be a JSON array';
+            END IF;
+
+            IF jsonb_array_length(op) < 2 THEN
+                RAISE EXCEPTION 'Each splice operation must contain at least [start_index, delete_count]';
+            END IF;
+
+            start_index := (op ->> 0)::integer;
+            delete_count := COALESCE((op ->> 1)::integer, 0);
+
+            IF jsonb_array_length(op) > 2 THEN
+                EXECUTE format(
+                    'SELECT ARRAY(
+                        SELECT jsonb_array_elements_text(to_jsonb(ARRAY(SELECT jsonb_array_elements($1) OFFSET 2)))
+                    )::%s',
+                    array_type_text
+                )
+                INTO insert_items
+                USING op;
+            ELSE
+                insert_items := input_array[0:-1];
+            END IF;
+
+            result_array := "${schema}".anyarray_splice(
+                result_array,
+                start_index,
+                delete_count,
+                insert_items
+            );
+        END LOOP;
+
+        RETURN result_array;
+    END;
+$BODY$ LANGUAGE plpgsql;`
 };

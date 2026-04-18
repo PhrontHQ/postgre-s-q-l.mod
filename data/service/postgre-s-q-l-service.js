@@ -498,6 +498,24 @@ PostgreSQLService.addClassProperties({
 
                     this.mainService.fetchData(secretQuery)
                     .then((result) => {
+                        
+                        /*
+                            The secret's value is expected to have the shape:
+
+                            {
+                                "username":"",//Auth - Identity
+                                "password":"",//Auth - Identity
+                                "clientPrivateKey":"base64-encoded-clientPrivateKey-content", //Auth - Identity
+                                "clientCertificate":"base64-encoded-clientCertificate-content" //Auth - Identity
+                                "engine":"postgres", //Connection (location?)
+                                "host":"--ip-address--", //Connection (location?)
+                                "port":5432, //Connection (location?)
+                                "endpointIdentifier":"", //Connection (location?)
+                            }
+                        */
+
+
+
                         if(result && result.length > 0) {
                             console.log("postgreSQLClientPoolWillResolveRawClientPromises - fetchData found secret: ");
                             resolve(this._loadDatabaseCredentialsFromSecret(result[0]));
@@ -3164,12 +3182,26 @@ PostgreSQLService.addClassProperties({
         value: 10
     },
 
+    uuidNoValue: {
+        value: `'${uuid.Uuid.noValue}'`
+    },
     mapPropertyDescriptorValueToRawValue: {
         value: function (propertyDescriptor, value, rawPropertyName, type, dataOperation) {
-            if (value === null || value === undefined) {
+            if (value === undefined) {
                 return "NULL";
-            }
-            else if (typeof value === "string") {
+            } else if(value === null) {
+                if(type === "uuid") {
+                    //If it's an update, we need to respect the snapshot's value, that was returned when initially fetched, otherwise the update won't work
+                    if(dataOperation.type === DataOperation.Type.UpdateOperation && dataOperation.snapshot[rawPropertyName] === null) {
+                        return "NULL";
+                    } else {
+                        //That's not a great exports... Just saying @marchant...
+                        return this.uuidNoValue;
+                    }
+                } else {
+                    return "NULL";
+                }
+            } else if (typeof value === "string") {
                 /*
                     Modeled after:
                     https://www.postgresql.fastware.com/blog/further-protect-your-data-with-pgcrypto
@@ -3216,6 +3248,56 @@ PostgreSQLService.addClassProperties({
             //   return `'${mappedValue}'`;
             // }
             return mappedValue;
+        }
+    },
+
+
+    /****
+     * TJ 4-10-26
+     * 
+     * This implementation assumes the changes array contains objects with the shape {index: number, addedValues: Array, removedValues: Array}
+     * 
+     * That may not be the case for properties whose type is Set, Map, etc. This function should use the propertyDescriptor 
+     * to get the type and determine the appropriate way to map the change
+     */
+    mapCollectionChangesToJSONB: {
+        value: function (propertyDescriptor, changes, rawPropertyName, type, dataOperation) {
+
+            let allActions;
+            for(let i=0, iCount=changes.length, action; (i<iCount); i++) {
+                action = changes[i];
+                let removedCount = action.removedValues ? action.removedValues.length : 0,
+                    hasAddedValues = action.addedValues && action.addedValues.length,
+                    hasChanges = (hasAddedValues || removedCount > 0),
+                    index = isNaN(action.index) ? 0 : parseInt(action.index),
+                    mapped = null;
+
+                if(hasChanges) {
+                    mapped = "[" + (index + 1) + "," + removedCount;
+                }
+
+                if (hasAddedValues) {
+                    for (let ii = 0, iiCount = action.addedValues.length, iiValue; ii < iiCount; ii++) {
+                        mapped += ",";
+                        if (action.addedValues[ii] === null) {
+                            iiValue = "null";
+                        } else if (typeof action.addedValues[ii] === "string") {
+                            //Does this need to be escaped?
+                            iiValue = `"${action.addedValues[ii]}"`;
+                        } else {
+                            iiValue = action.addedValues[ii];
+                        }
+                        mapped += iiValue;
+                    }
+                } 
+                if(hasChanges) {
+                    mapped += "]";
+
+                    (allActions || (allActions = [])).push(mapped);
+                }
+
+            }
+            return allActions ? `[${allActions.join(',')}]` : null;
         }
     },
     // mapPropertyDescriptorValueToRawValue: {
@@ -5038,10 +5120,12 @@ PostgreSQLService.addClassProperties({
                 tableName = this.tableForObjectDescriptor(objectDescriptor),
                 schemaName = rawDataOperation.schema,
                 recordKeys = Object.keys(dataChanges),
-                setRecordKeys = Array(recordKeys.length),
+                //No, because sometime we get changes that are nothing...
+                //setRecordKeys = Array(recordKeys.length),
+                setRecordKeys,
                 // sqlColumns = recordKeys.join(","),
                 i, countI, iKey, iKeyEscaped, iValue, iMappedValue, iAssignment, iRawType, iPropertyDescriptor, 
-                iHasAddedValues, iHasRemovedValues, iHasIndex,
+                iHasAddedValues, iHasRemovedValues, iHasIndex, iHasMultipleChanges,
                 dataSnapshot = updateOperation.snapshot,
                 dataSnapshotKeys = dataSnapshot ? Object.keys(dataSnapshot) : null,
                 condition,
@@ -5136,14 +5220,21 @@ PostgreSQLService.addClassProperties({
                 } else {
                     iHasAddedValues = iValue.hasOwnProperty("addedValues")
                     iHasRemovedValues = iValue.hasOwnProperty("removedValues")
+                    iHasMultipleChanges = iValue.hasOwnProperty("changes")
                     iHasIndex = iValue.hasOwnProperty("index")
-                    if (iHasIndex && iHasAddedValues) {
+                    if (iHasMultipleChanges) {
+                        let mappedActions = this.mapCollectionChangesToJSONB(iPropertyDescriptor, iValue.changes, iKeyEscaped, iRawType, updateOperation);
+                        if(mappedActions) {
+                            iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, '${mappedActions}'::jsonb)`;
+                        }
+                    }
+                    //Can these be removed? 
+                    else if (iHasIndex && iHasAddedValues) {
                         let addMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
                         let deleteCount = iHasRemovedValues ? iValue.removedValues.length : 0;
 
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_splice(${iKeyEscaped}, ${iValue.index+1}, ${deleteCount}, ${addMappedValue})`;
                     }
-                    //Is this still used or can we assume that every event with addedValues also has an index?
                     else if (iHasAddedValues) {
                         iMappedValue = this.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(iPropertyDescriptor, iValue.addedValues, iKeyEscaped, iRawType, updateOperation);
                         iAssignment = `${iKeyEscaped} = ${schemaName}.anyarray_concat_uniq(${iKeyEscaped}, ${iMappedValue})`;
@@ -5159,7 +5250,9 @@ PostgreSQLService.addClassProperties({
                     }
                 }
 
-                setRecordKeys[i] = iAssignment;
+                if(iAssignment) {
+                    (setRecordKeys || (setRecordKeys = []))[i] = iAssignment;
+                }
             }
 
             if (!setRecordKeys || setRecordKeys.length === 0) {
@@ -6672,7 +6765,9 @@ PostgreSQLService.addClassProperties({
 
                             if( (i === lastIndex) ) {
 
-                                iBatch = `${iBatch}${iStatement};`;
+                                if(iStatement) {
+                                    iBatch = `${iBatch}${iStatement};`;
+                                }
                                 
                                 //Time to execute what we have before it becomes too big:
                                 rawTransaction = {};
