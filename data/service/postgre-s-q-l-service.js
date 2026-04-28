@@ -2210,18 +2210,35 @@ PostgreSQLService.addClassProperties({
                         mappingToUse = (rawDataOperation.mapping || mapping),
                         dataOperation = rawDataOperation.dataOperation;
 
+                    /*
+                        Returns true if there's more than one ExpressionDataMapping with the same value for rawDataTypeName,
+                        which means mutliple subclasses are stored together.
+                    */
                     if(mappingToUse.needsRawDataTypeIdentificationCriteria) {
                         if(criteriaToMap) {
-                            let includesChildObjectDescriptors = readOperation.data && !readOperation.data.hasOwnProperty("includesChildObjectDescriptors"),
-                                rawDataTypeIdentificationCriteria = mappingToUse.rawDataTypeIdentificationCriteriaForDataOperation(dataOperation );
+                            let includesChildObjectDescriptors = readOperation.data 
+                                ? !readOperation.data.hasOwnProperty("includesChildObjectDescriptors")
+                                    ? true
+                                    : readOperation.data.includesChildObjectDescriptors
+                                : true;
                             /*
                                 Needs to pass includesChildObjectDescriptors to mapping.rawDataTypeIdentificationCriteria
                                 If includesChildObjectDescriptors, then if readOperation.target is the top-most object desscriptor stored in that table, 
                                 then there should be no additional criteria needed
                                 However, if readOperation.target is one of the sub types, then a or of the rawDataTypeIdentificationCriteria of each descendent is going to be needed
+
+                                if isReadOperationForSingleObject === true:
+                                    Fetching a relationship is different though: the value descriptor of the relationship defines the higher scope of what we should be fetching.
+                                    I don't think we're supporting correctly right now the used case where subtypes may be stored into other tables, in which we'd have to construct a multi-table query to match
+
+                                so if isReadOperationForSingleObject is true, we don't want to resrict the type of the objects to be found: once saved, we have to assume it's legit, so we leave it open,
+                                join / array operations will find what they may
                             */
-                            if(includesChildObjectDescriptors && rawDataTypeIdentificationCriteria) {
-                                criteriaToMap = criteriaToMap.and(rawDataTypeIdentificationCriteria);
+                            if(includesChildObjectDescriptors && !isReadOperationForSingleObject) {
+                                let rawDataTypeIdentificationCriteria = mappingToUse.rawDataTypeIdentificationCriteriaForDataOperation(dataOperation);
+                                if(rawDataTypeIdentificationCriteria) {
+                                    criteriaToMap = criteriaToMap.and(rawDataTypeIdentificationCriteria);
+                                }
                             }
                         } else {
                             criteriaToMap = mappingToUse.rawDataTypeIdentificationCriteriaForDataOperation(dataOperation);
