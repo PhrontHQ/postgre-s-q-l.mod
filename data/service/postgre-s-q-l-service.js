@@ -1358,6 +1358,12 @@ PostgreSQLService.addClassProperties({
                     sql: rawDataOperation.sql,
                     functionName: this._functionNameFromSQLStatement(rawDataOperation, error)
                 };
+            } else if (error.code === "3F000" && doesNotExist) {
+                error.name = DataOperationErrorNames.DatabaseSchemaMissing;
+                error.cause = {
+                    sql: rawDataOperation.sql,
+                    functionName: this._functionNameFromSQLStatement(rawDataOperation, error)
+                };
             } else if(doesNotExist && isDatabaseError) { //code == '3D000'
                 error.name = DataOperationErrorNames.DatabaseMissing;
             }
@@ -4416,6 +4422,13 @@ PostgreSQLService.addClassProperties({
         }
     },
 
+    _clearPromisesForSchemaNamed: {
+        value: function(schemaName) {
+            this._verifySchemaPromise.delete(schemaName);
+            this._createSchemaPromise.delete(schemaName);
+        }
+    },
+
     performRawDataOperation: {
         value: function (rawDataOperation, callback, dataOperation) {
             return this.executeStatement(rawDataOperation, callback, dataOperation);
@@ -4578,11 +4591,42 @@ PostgreSQLService.addClassProperties({
                     return new Promise((resolve, reject) => {
                         console.log("createObjectDescriptorTable rawDataOperation: ",rawDataOperation.sql);
                         this.performRawDataOperation(rawDataOperation, (err, data) => {
-    
-                            err
-                            ? reject(err)
-                            : resolve(data);
 
+                            if(err) {
+                                this.mapRawDataOperationErrorToDataOperation(rawDataOperation, err, createOperation);
+                                if(err.name === DataOperationErrorNames.DatabaseSchemaMissing) {
+
+                                    this._clearPromisesForSchemaNamed(this.connection.schema);
+                                    this.createSchemaIfNeededForCreateObjectDescriptorOperation(createOperation)
+                                    .then(() => {
+                                        console.warn("Database Schema was missing, recovered");
+                                        //Schema created, we retry, once.
+                                        this.performRawDataOperation(rawDataOperation, (err, data) => {
+                                            err
+                                                ? reject(err)
+                                                : resolve(data);
+                                        });
+
+                                        //TODO: then(() => {
+                                            /*
+                                                We just re-createdt he whole schema, it would be a good idea tp push a data operation
+                                                to all clients to ask them to re-save everything they have in memory to minimize losses.
+                                                At least they would not lose what they had fetched so far 
+                                            */
+                                        //})
+                                    })
+                                    .catch((createSchemaError) => {
+                                        console.error(createSchemaError, " Failed to create schema, trying to recover from failure to exectute createOperation: ",createOperation);
+                                        reject(err)
+                                    });
+
+                                } else {
+                                    reject(err);
+                                }
+                            } else {
+                                resolve(data);
+                            }
+    
                             //Now clear the cached promise in case we need to do it again, like someone dropping a table in our back...
                             this._createObjectStorePromiseByObject.delete(createOperation.data);
     
