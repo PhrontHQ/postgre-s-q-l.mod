@@ -1,0 +1,17 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=827846 to learn about workspace recommendations.
+    // Extension identifier format: ${publisher}.${name}. Example: vscode.csharp
+    // List of extensions which should be recommended for users of this workspace.
+
+    //https://code.visualstudio.com/docs/editor/extension-marketplace#_workspace-recommended-extensions
+    
+    //See pointers to automate installation here:
+    //https://stackoverflow.com/questions/35929746/automatically-install-extensions-in-vs-code
+
+    "recommendations": [
+        "zaaack.markdown-editor"
+    ],
+    // List of extensions recommended by VS Code that should not be recommended for users of this workspace.
+    "unwantedRecommendations": []
+
+  }
