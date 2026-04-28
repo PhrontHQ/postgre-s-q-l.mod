@@ -124,7 +124,15 @@ var PostgreSQLClientPool = exports.PostgreSQLClientPool = RawDatabaseClientPool.
 
             //console.debug("connectionOptions: ",connectionOptions);
 
-            return new this.constructor.rawPostgreSQLClientPool(connectionOptions);
+            let pool = new this.constructor.rawPostgreSQLClientPool(connectionOptions);
+
+            // // This catches errors on idle clients in the pool
+            pool.on('error', (err, client) => {
+                console.error('Unexpected error on idle client', err);
+                // No need to manually reconnect; the pool handles it.
+            });
+
+            return pool
         }
     },
 
