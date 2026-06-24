@@ -2418,7 +2418,7 @@ PostgreSQLService.addClassProperties({
                         let objectDescriptor = err.objectDescriptor;
                         return this.createTableForObjectDescriptor(objectDescriptor)
                         .then((result) => {
-                            let operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], false, rawDataOperation.target);
+                            let operation = this.responseOperationForReadOperation(this.relevantOperationForResponse(readOperation), null, [], false, rawDataOperation.target);
                             /*
                                 If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                             */
@@ -2484,7 +2484,7 @@ PostgreSQLService.addClassProperties({
 
                     console.error("handleReadOperation Error: readOperation:", readOperation, "rawDataOperation: ", rawDataOperation, "error: ", err);
 
-                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, null, [], isNotLast, rawDataOperation.target);
+                    var operation = this.responseOperationForReadOperation(this.relevantOperationForResponse(readOperation), null, [], isNotLast, rawDataOperation.target);
                     /*
                         If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                     */
@@ -2498,7 +2498,7 @@ PostgreSQLService.addClassProperties({
                         If the readOperation has a referrer, it's a readOperation created by us to fetch an object's property, so we're going to use that.
                     */
 
-                    var operation = this.responseOperationForReadOperation(readOperation.referrer ? readOperation.referrer : readOperation, err, (data && (data.rows || data.records)), isNotLast, rawDataOperation.target);
+                    var operation = this.responseOperationForReadOperation(this.relevantOperationForResponse(readOperation), err, (data && (data.rows || data.records)), isNotLast, rawDataOperation.target);
                     /*
                         If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                     */
@@ -2546,7 +2546,7 @@ PostgreSQLService.addClassProperties({
 
 
             if(rawDataOperation.error) {
-                var errorOperation = this.responseOperationForReadOperation(rawDataOperation.dataOperation.referrer ? rawDataOperation.dataOperation.referrer : rawDataOperation.dataOperation, rawDataOperation.error, null, false, rawDataOperation.target);
+                var errorOperation = this.responseOperationForReadOperation(this.relevantOperationForResponse(readOperation), rawDataOperation.error, null, false, rawDataOperation.target);
                 /*
                     If we pass responseOperationForReadOperation the readOperation.referrer if there's one, we end up with the right clientId ans right referrerId, but the wrong target, so for now, reset it to what it should be:
                 */
@@ -2585,7 +2585,7 @@ PostgreSQLService.addClassProperties({
                 } else {
                     readOperationExecutedCount++;
 
-                    var operation = self.responseOperationForReadOperation(rawDataOperation.dataOperation.referrer ? rawDataOperation.dataOperation.referrer : rawDataOperation.dataOperation, null, [], false, rawDataOperation.target);
+                    var operation = self.responseOperationForReadOperation(self.relevantOperationForResponse(rawDataOperation.dataOperation), null, [], false, rawDataOperation.target);
                     resolve(operation);
                 }
 
@@ -2637,7 +2637,7 @@ PostgreSQLService.addClassProperties({
                 /*
                     Only if we're a root readOperation, we dispatch the result, otherwise it's handled within the logic of the root to orchestrate readUpdate/ReadCompletedOperation
                 */
-                else if(!readOperation.referrer) {
+                else if(!readOperation.referrer || readOperation.referrer.type === DataOperation.Type.ReadCompletedOperation) {
                     firstReadUpdateOperation.type = DataOperation.Type.ReadCompletedOperation;
                     
                     //If rawDataOperation has a target, it's going to be what we want, 
