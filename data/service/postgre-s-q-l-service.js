@@ -3,7 +3,6 @@ const { stringify } = require("querystring");
 var RawDataService = require("mod/data/service/raw-data-service").RawDataService,
     Montage = require("mod/core/core").Montage,
     Criteria = require("mod/core/criteria").Criteria,
-    ObjectDescriptor = require("mod/core/meta/object-descriptor").ObjectDescriptor,
     RawEmbeddedValueToObjectConverter = require("mod/data/converter/raw-embedded-value-to-object-converter").RawEmbeddedValueToObjectConverter,
     KeyValueArrayToMapConverter = require("mod/core/converter/key-value-array-to-map-converter").KeyValueArrayToMapConverter,
     Range = require("mod/core/range").Range,
@@ -2170,6 +2169,17 @@ PostgreSQLService.addClassProperties({
                     }
                 }
 
+                if (iReadOperation) {
+                    /***********
+                     * Ensure RawDataServices responsible for handling the event 
+                     * are registered on the ObjectDescriptor's composedPath
+                     * 
+                     * A ReadOperation sent to the worker can result in ReadOperations
+                     * for multiple types via readExpressions. 
+                     */
+                    ObjectDescriptor.prepareToDispatchDataOperation(iReadOperation.target);
+                }
+                
 
                 if(iReadOperation && iPropertyDescriptor.isLocalizable) {
                     iReadOperation.locales = operationLocales;
@@ -2544,6 +2554,12 @@ PostgreSQLService.addClassProperties({
                 readOperations = this.mapReadOperationToRawReadOperation(readOperation, rawDataOperation);
             }
 
+            /***********
+             * Ensure RawDataServices responsible for handling the event 
+             * are registered on the ObjectDescriptor's composedPath
+             */
+            ObjectDescriptor.prepareToDispatchDataOperation(objectDescriptor);
+
 
             if(rawDataOperation.error) {
                 var errorOperation = this.responseOperationForReadOperation(this.relevantOperationForResponse(readOperation), rawDataOperation.error, null, false, rawDataOperation.target);
@@ -2639,6 +2655,12 @@ PostgreSQLService.addClassProperties({
                 */
                 else if(!readOperation.referrer || readOperation.referrer.type === DataOperation.Type.ReadCompletedOperation) {
                     firstReadUpdateOperation.type = DataOperation.Type.ReadCompletedOperation;
+
+                    /***********
+                     * Ensure RawDataServices responsible for handling the event 
+                     * are registered on the ObjectDescriptor's composedPath
+                     */
+                    ObjectDescriptor.prepareToDispatchDataOperation(rawDataOperation.target || objectDescriptor);
                     
                     //If rawDataOperation has a target, it's going to be what we want, 
                     // like when resolving an object's property
