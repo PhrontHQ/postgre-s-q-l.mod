@@ -35,6 +35,10 @@ function arrayString (val, type, depth) {
     var toJSONB = (type === "jsonb"),
         toList = (type === "list"),
         isTypeCastArray = ( type && type.endsWith("[]") && type.length > 2),
+        typeContent = isTypeCastArray ? type.stringByRemovingSuffix("[]") : undefined,
+        isTextContent = typeContent === "text",
+        singleQuote = "'",
+        doubleQuote = '"',
         result = toJSONB
                     ? "'["
                     : toList
@@ -56,6 +60,9 @@ function arrayString (val, type, depth) {
         } else if (iVal instanceof Buffer) {
             result += '\\\\x';
             result += iVal.toString('hex');
+        } else if(isTextContent) {
+            //result += escapeElement(escapeString(iVal, type), doubleQuote);
+            result += escapeString(iVal, type);
         } else {
             if (typeof iVal === 'object' && toJSONB) {
                 result += prepareValue(iVal, type, undefined, depth);
@@ -63,7 +70,7 @@ function arrayString (val, type, depth) {
                 if(isUUID) {
                     result += prepareValue(iVal, undefined, undefined, depth);
                 } else {
-                    result += escapeElement(prepareValue(iVal,type, undefined, depth), toList ? "'" : '"' );
+                    result += escapeElement(prepareValue(iVal,type, undefined, depth), toList ? singleQuote : doubleQuote );
                 }
             }
 
@@ -226,7 +233,12 @@ function normalizeQueryConfig (config, values, callback) {
 function escapeString(str, rawType, propertyDescriptor) {
     let hasBackslash = false;
     let isJSONB = rawType === "jsonb";
-    let delimiter = isJSONB ? '' : "'";
+    let delimiter = isJSONB 
+        ? '' 
+        : rawType?.endsWith("[]") 
+            ? '"'
+            : "'";
+
     let escaped = delimiter;
     for (let i = 0; i < str.length; i++) {
         const c = str[i];
