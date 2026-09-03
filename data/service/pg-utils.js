@@ -11,8 +11,9 @@
  * README.md file in the root directory of this source tree.
  */
 
-var Range = require("mod/core/range").Range,
-RFC3339UTCRangeStringToDateRangeConverter = require("mod/core/converter/r-f-c-3339-u-t-c-range-string-to-date-range-converter").singleton;
+const   Range = require("mod/core/range").Range,
+        LocalizedString = require("mod/data/model/localized-string").LocalizedString,
+        RFC3339UTCRangeStringToDateRangeConverter = require("mod/core/converter/r-f-c-3339-u-t-c-range-string-to-date-range-converter").singleton;
 
 
 const parseInputDatesAsUTC = false;
@@ -132,6 +133,11 @@ var prepareValue = function (val, type, propertyDescriptor, depth = 0, seen) {
     if (Array.isArray(val)) {
         return arrayString(val,type, depth++);
     }
+
+    if(val instanceof LocalizedString && val.localization) {
+        return prepareObject(val.localization, propertyDescriptor, type, depth++, seen);
+    }
+
     if (typeof val === 'undefined') {
         return null;
     }
