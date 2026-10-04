@@ -585,6 +585,8 @@ PostgreSQLService.addClassProperties({
                 */
 
                 //If we have an connectionIdentifier, we go for it, otherwise we go for a stage-based logic
+                console.log("DEBUG: this.connectionIdentifier is: ", this.connectionIdentifier);
+                console.log("DEBUG: this.currentEnvironment is: ", this.currentEnvironment);
                 if(this.connectionIdentifier) {
                     this.connection = this.connectionForIdentifier(this.connectionIdentifier);
                 }
