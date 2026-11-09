@@ -56,7 +56,8 @@ var RawDataService = require("mod/data/service/raw-data-service").RawDataService
     PostgreSQLClientPool,
     ReadWritePostgreSQLClientPool,
     ReadOnlyPostgreSQLClientPool,
-    ProcessEnv = process.env;
+    ProcessEnv = process.env,
+    DataIdentifier = require("mod/data/model/data-identifier").DataIdentifier;
 
 let RAW_MODEL_PATH = "../raw-model/";
 
@@ -489,7 +490,7 @@ PostgreSQLService.addClassProperties({
                 promises.push(new Promise( (resolve, reject) => {
 
                     let secretCriteria = new Criteria().initWithExpression("name == $.name", {
-                            name: this.connection.secretName || `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.stage}-${this.connection.database}-database`
+                            name: this.connection.secretName || `${!!this.connection.environment ? `${this.connection.environment}-` : ''}${this.currentEnvironment.deploymentStage}-${this.connection.database}-database`
                         }),
                         secretQuery = DataQuery.withTypeAndCriteria(SecretObjectDescriptor, secretCriteria);
         
@@ -591,9 +592,9 @@ PostgreSQLService.addClassProperties({
                     this.connection = this.connectionForIdentifier(this.connectionIdentifier);
                 }
                 else if(!this.currentEnvironment.isCloud) {
-                    this.connection = this.connectionForIdentifier(this.currentEnvironment.stage);
+                    this.connection = this.connectionForIdentifier(this.currentEnvironment.deploymentStage);
                 } else {
-                    this.connection = this.connectionForIdentifier(this.currentEnvironment.stage);
+                    this.connection = this.connectionForIdentifier(this.currentEnvironment.deploymentStage);
                 }
             }
             return this._connection;
@@ -1471,9 +1472,14 @@ PostgreSQLService.addClassProperties({
             //Bemoit 1/11/2026 - this is only covering one kind of join, id == ...
             //we need to add arratOfIds.has($) - a single value
             if(criteriaQualifiedProperties && (rawDataPrimaryKeys.length === criteriaQualifiedProperties.length)) {
-                isReadOperationForSingleObject = rawDataPrimaryKeys.every((aPrimaryKeyProperty) => {
-                    return (criteriaQualifiedProperties.indexOf(aPrimaryKeyProperty) !== -1);
-                });
+                //Adaptation for dataIdentifier
+                if(criteriaQualifiedProperties.length === 1 && criteriaQualifiedProperties[0] === "dataIdentifier") {
+                    isReadOperationForSingleObject = true;
+                } else {
+                    isReadOperationForSingleObject = rawDataPrimaryKeys.every((aPrimaryKeyProperty) => {
+                        return (criteriaQualifiedProperties.indexOf(aPrimaryKeyProperty) !== -1);
+                    });
+                }
 
                 //try for readOperation.criteria.expression like 'arrayOfIds.has($)' = whewre $ is the value  
                 if(isReadOperationForSingleObject === false) {
@@ -2330,7 +2336,7 @@ PostgreSQLService.addClassProperties({
 
             // if(readOperation.target.name === "Event") {
             //     console.log("------------------> readOperation.criteria.expression:",readOperation.criteria.expression);
-            console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
+            //console.log("------------------> rawDataOperation.sql:",rawDataOperation.sql);
 
             return readOperations;
 
@@ -2393,7 +2399,7 @@ PostgreSQLService.addClassProperties({
 
     handleReadOperation: {
         value: function (readOperation) {
-            console.log(this.identifier+" handle readOperation id " + readOperation.id + " for "+readOperation.target.name+ (readOperation?.data?.readExpressions? (" "+readOperation?.data?.readExpressions) : "") +" like "+ readOperation.criteria);
+            //console.log(this.identifier+" handle readOperation id " + readOperation.id + " for "+readOperation.target.name+ (readOperation?.data?.readExpressions? (" "+readOperation?.data?.readExpressions) : "") +" like "+ readOperation.criteria);
 
             /*
                 Until we solve more efficiently (lazily) how RawDataServices listen for and receive data operations, we have to check wether we're the one to deal with this:
@@ -2590,7 +2596,8 @@ PostgreSQLService.addClassProperties({
 
             firstPromise = new Promise(function (resolve, reject) {
 
-                //console.log("readOperation "+readOperation.id+" sql: "+rawDataOperation.sql);
+                console.log("performReadOperation: ", readOperation);
+                console.log("asRawOperation: ", rawDataOperation.sql);
 
 
                 if(rawDataOperation.sql) {
@@ -3282,8 +3289,9 @@ PostgreSQLService.addClassProperties({
                     }
                 }
 
-            }
-            else {
+            } else if(value instanceof DataIdentifier) {
+                return prepareValue(`'${value.primaryKey}'`, "uuid", propertyDescriptor);
+            } else {
                 return prepareValue(value, type, propertyDescriptor);
             }
         }
@@ -3590,7 +3598,14 @@ PostgreSQLService.addClassProperties({
 
             var rawDataDescriptor,
                 schemaPropertyDescriptors,
-                propertyDescriptors = Array.from(objectDescriptor.propertyDescriptors),
+                /*
+                    In the case where a type may not have its own mapping, objectDescriptorMapping could be the mapping of an ancestor / ascendant.
+                    If that's the case we need to only consider the propertyDescriptors of that parent.
+                */
+                mappedDescriptor = objectDescriptorMapping.objectDescriptor === objectDescriptor
+                    ? objectDescriptor
+                    : objectDescriptorMapping.objectDescriptor,
+                propertyDescriptors = Array.from(mappedDescriptor.propertyDescriptors),
                 parentDescriptor,
                 colunmns = new Set(),
                 i, iSchemaPropertyDescriptor, iPropertyDescriptor, iPropertyDescriptorName, iIndexType, iPropertyDescriptorValueDescriptor, iDescendantDescriptors, iObjectRule, iRule,
@@ -3648,6 +3663,7 @@ PostgreSQLService.addClassProperties({
 
             for (i = propertyDescriptors.length - 1; (i > -1); i--) {
                 iPropertyDescriptor = propertyDescriptors[i];
+
                 mapping = !isObjectDescriptorStoreShared ? objectDescriptorMapping : this.mappingForType(iPropertyDescriptor.owner);
 
                 //Descendant, but stored separately, pass
@@ -3665,9 +3681,28 @@ PostgreSQLService.addClassProperties({
                 iPropertyDescriptorValueDescriptor = iPropertyDescriptor._valueDescriptorReference;
                 iDescendantDescriptors = iPropertyDescriptorValueDescriptor ? iPropertyDescriptorValueDescriptor.descendantDescriptors : null;
                 iObjectRule = mapping.objectMappingRuleForPropertyName(iPropertyDescriptor.name);
+                //That gives us raw rules defined 2 ways in  objectMapping.rules
                 iRule = iObjectRule && mapping.rawDataMappingRuleForPropertyName(iObjectRule.sourcePath);
+
+                //If not found there, we look into rawDataMapping.rules
+                if(!iRule) {
+                    iRule = mapping.rawDataMappingRuleForPropertyName(iPropertyDescriptor.name);
+                }
                 converterforeignDescriptorMappings = iObjectRule && iObjectRule.converter && iObjectRule.converter.foreignDescriptorMappings;
                 iObjectRuleSourcePathSyntax = iObjectRule && iObjectRule.sourcePathSyntax;
+
+
+                if(!iPropertyDescriptor.isSerializable) {
+                    if(iObjectRule) {
+                        /*
+                            We flag the discrepency but still will make iPropertyDescriptor a column
+                        */
+                        console.warn(`${iPropertyDescriptor.objectDescriptor.name} property ${iPropertyDescriptor.name}'s value for isSerializable is false and yet it has a mapping rule. Fix it!`);
+                    } else {
+                        continue;
+                    }
+                }
+
 
                 /*
                     If it's a property points to an object descriptor with descendants,
@@ -3862,7 +3897,7 @@ PostgreSQLService.addClassProperties({
                             colunmns.add(iSchemaPropertyDescriptor.name);
                         }
 
-                    } else {
+                    } else if(iPropertyDescriptor.isSerializable && iRule) {
                         columnName = iPropertyDescriptor.name;
                         columnType = this.mapPropertyDescriptorToRawType(iPropertyDescriptor, iRule);
 
@@ -3881,7 +3916,7 @@ PostgreSQLService.addClassProperties({
 
                     }
 
-                    if(iPropertyDescriptor.isUnique === true) {
+                    if(iSchemaPropertyDescriptor && iPropertyDescriptor.isUnique === true) {
                         iSchemaPropertyDescriptor.isUnique = iPropertyDescriptor.isUnique;
                     }
 
@@ -5005,7 +5040,7 @@ PostgreSQLService.addClassProperties({
 
                 }
 
-                console.log("_mapCreateOperationToSQL: sql: "+sql)
+                //console.log("_mapCreateOperationToSQL: sql: "+sql)
                 return sql;
             });
         }
@@ -6500,6 +6535,10 @@ PostgreSQLService.addClassProperties({
     _tryPerformRawTransactionForDataOperationWithClient: {
         value: function (rawTransaction, transactionOperation, client, done, responseOperation) {
             let shouldRetry = false; 
+
+            if(rawTransaction.sql.contains("WebSocketSession")) {
+                    console.warn("!!!!!!!!!!!! WebSocketSession ");
+            }
 
             console.log("_tryPerformRawTransactionForDataOperationWithClient: \n\n*******************\n"+rawTransaction.sql+"\n*******************\n\n");
 

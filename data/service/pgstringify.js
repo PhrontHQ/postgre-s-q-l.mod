@@ -811,6 +811,18 @@ module.exports = {
                 // rawDataDescriptor = dataService.rawDataDescriptorForObjectDescriptor(objectDescriptor),
                 // rawPropertyDescriptor = rawDataDescriptor.propertyDescriptorForName(rawPropertyValue);
 
+
+
+
+            //WIP for dataIdentifier with single-component primaryKey:
+            if(rawPropertyValue === "dataIdentifier") {
+                //let primaryKeyValue = scope.primaryKey;
+                let rawDataPrimaryKeys = dataMapping.rawDataPrimaryKeys;
+
+                //#Warning, hard coded for single single-component primaryKey:
+                rawPropertyValue = rawDataPrimaryKeys[0];
+            }
+
             /* 
                 propertyName could also be the name of an actual property on objectDescriptor...
                 So we test this first.
@@ -843,7 +855,7 @@ module.exports = {
 
             //ToMany
             //if(propertyDescriptor && propertyDescriptor.cardinality > 1) {
-            if(propertyDescriptor && propertyDescriptorValueDescriptor) {
+            if(propertyDescriptor && propertyDescriptorValueDescriptor && propertyDescriptor.name !== "dataIdentifier") {
 
  /*
                     TOTDO: handle polymorphic association joins:
@@ -920,7 +932,7 @@ module.exports = {
                     We don't support (we haven't ran into) the case where we'd join from a foreignKey in a table to an array of values on the other side. To do so we might have to introduce
                     a formal relational mapping vs leveraging/abusing the exression data mapping as w've been doing so far.
                 */
-                if(objectRule.sourcePath !== "id") {
+                if(objectRule && objectRule.sourcePath !== "id") {
 
                     /*
                         If dataMappings.length === 1, we're evaluating a column on the "root" table
