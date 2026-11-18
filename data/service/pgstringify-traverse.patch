@@ -1,0 +1,93 @@
+diff --git a/data/service/pgstringify.js b/data/service/pgstringify.js
+--- a/data/service/pgstringify.js
++++ b/data/service/pgstringify.js
+@@ -24,5 +24,6 @@
+     SQLJoinType = SQLJoinModule.SQLJoinType,
+     SQLJoin = SQLJoinModule.SQLJoin,
+     SQLJoinStatements = require("./s-q-l-join-statements").SQLJoinStatements,
++    pgTraverse = require("./pg-traverse"),
+     SyntaxPostOrderIterator = SyntaxIteratorModule.SyntaxPostOrderIterator,
+     SyntaxInOrderIterator = SyntaxIteratorModule.SyntaxInOrderIterator;
+@@ -238,6 +239,13 @@
+         if ((stringifier = stringifiers[syntax.type])) {
+             // operators
+             string = stringifier(syntax, scope, parent, this, dataMappings, locales, rawExpressionJoinStatements, currentAliasPrefix, inlinedDataPropertyDescriptor);
++        } else if ((syntax.type === "last" || syntax.type === "one") && syntax.args && syntax.args[0] && syntax.args[0].type === "traverseBlock") {
++            /*
++                traverse{…}.last() / .one(): the traversal's subquery keeps only the farthest /
++                nearest reached row (ORDER BY depth LIMIT 1), so there's no function to call.
++                It pushes the reached rows' mapping for the property that follows, like .name.
++            */
++            string = this.stringify(syntax.args[0], scope, dataMappings, locales, rawExpressionJoinStatements, syntax, currentAliasPrefix, inlinedDataPropertyDescriptor);
+         } else if (syntax.inline) {
+             // inline invocations
+             string = "&";
+@@ -340,7 +348,49 @@
+             //chain = "(";
+ 
+         args = syntax.args;
+ 
++        /*
++            traverse{…}.has(value): the traverseBlock stringifier added a JOIN LATERAL of the
++            reached rows and returned ARRAY["<alias>"."<primary key>"] as the left side, like
++            ARRAY["Table"."id"] in the branches below. Each joined row is one reached node, so
++            "@> ARRAY[value]" reads "some reached node is value".
++        */
++        if(args[0].type === "traverseBlock") {
++            if(syntax.type !== "has") {
++                throw new Error("pgstringify.js: "+syntax.type+"() after traverse{} isn't supported in SQL criteria yet, only has(): "+JSON.stringify(syntax));
++            }
++            if(args[1].type === "parameters") {
++                value = scope;
++            } else if(args[1].type === "property" && args[1].args[0].type === "parameters") {
++                value = scope ? scope[args[1].args[1].value] : undefined;
++            } else if(args[1].type === "literal") {
++                value = args[1].value;
++            } else {
++                throw new Error("pgstringify.js: traverse{}.has() takes a literal or a parameter: "+JSON.stringify(syntax));
++            }
++            /*
++                In FRB, has([a]) looks for the array [a] itself among the reached objects.
++                SQL can't express that, so it's an error rather than a different answer.
++            */
++            if(Array.isArray(value)) {
++                throw new Error("pgstringify.js: traverse{}.has() takes one object or primary key, not an array: "+JSON.stringify(syntax));
++            }
++            //A data object stands for its dataIdentifier, which the value mapping turns into its primary key
++            if(value && typeof value === "object" && value.dataIdentifier) {
++                value = value.dataIdentifier;
++            }
++            /*
++                null and undefined match nothing, as in FRB. They're handled here because
++                mapPropertyDescriptorValueToRawValue() reads dataOperation.type for a null uuid.
++                ARRAY[NULL] is contained in no array, so the condition is false.
++                Primary keys are uuid in this service (see mapObjectDescriptorRawPropertyToRawType).
++            */
++            escapedValue = (value === null || value === undefined)
++                ? "NULL"
++                : dataService.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(undefined, value, undefined, "uuid");
++            return `@> ARRAY[${escapedValue}]::uuid[]`;
++        }
++
+         if(args[0].type === "parameters") {
+             if(args[1].type === "property") {
+                 propertyName = args[1].args[1].value;
+@@ -440,7 +490,8 @@
+                 escapedValue = dataService.mapPropertyDescriptorValueToRawPropertyNameWithTypeExpression(propertyDescriptor, value, rawProperty);
+             }
+         } else {
+-            throw new Error("phront-service.js: unhandled syntax in mapCriteriaToRawStatement(criteria: "+JSON.stringify(criteria)+"objectDescriptor: "+mapping.objectDescriptor.name);
++            //Was a ReferenceError: criteria and mapping aren't defined in this function
++            throw new Error("pgstringify.js: unhandled syntax in "+syntax.type+"(): "+JSON.stringify(syntax)+" objectDescriptor: "+objectDescriptor.name);
+         }
+         // rawProperty = mapping.mapObjectPropertyNameToRawPropertyName(propertyName);
+         //escapedRawProperty = escapeIdentifier(rawProperty);
+@@ -760,5 +811,8 @@
+         groupMapBlock: makeBlockStringifier("groupMap"),
+         minBlock: makeBlockStringifier("min"),
+         maxBlock: makeBlockStringifier("max"),
++
++        //traverse{…}: a JOIN LATERAL over a recursive CTE, see pg-traverse.js
++        traverseBlock: pgTraverse.traverseBlock,
+ 
+         inlineCriteriaParameters: true,
