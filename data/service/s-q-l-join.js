@@ -108,8 +108,40 @@ SQLJoin = exports.SQLJoin = Montage.specialize( /** @lends SQLJoin */ {
         value: undefined
     },
 
+    /**
+     * A FROM item that isn't a table, used as is, like a parenthesized
+     * sub-query: "(WITH RECURSIVE … SELECT …)". When set, it replaces
+     * "schema"."rightDataSet" and needs a rightDataSetAlias.
+     * rightDataSet, rightDataSetSchema and rightDataSetObjecDescriptor still
+     * describe what the rows are.
+     *
+     * @property {string}
+     */
+    rightDataSetExpression: {
+        value: undefined
+    },
+
+    /**
+     * If true, the right data set is LATERAL: it can reference columns of
+     * the FROM items before it, as traverse{} does to start from the row
+     * being qualified.
+     *
+     * @property {boolean}
+     */
+    isLateral: {
+        value: false
+    },
+
+    /*
+        LATERAL is part of the key rather than added by toString() because
+        SQLJoinStatements renders the comma-separated FROM form
+        (fromClauseQualifiedRightDataSetsString) directly from these keys.
+    */
     qualifiedRightDataSet: {
         get: function() {
+            if (this.rightDataSetExpression) {
+                return `${this.isLateral ? "LATERAL " : ""}${this.rightDataSetExpression}${this.rightDataSetAliasToStringFragment}`;
+            }
             return `"${this.rightDataSetSchema}"."${this.rightDataSet}"${this.rightDataSetAliasToStringFragment}`;
         }
     },
