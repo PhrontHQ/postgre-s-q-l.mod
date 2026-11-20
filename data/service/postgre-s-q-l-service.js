@@ -1672,11 +1672,23 @@ PostgreSQLService.addClassProperties({
                         escapedRawReadExpressions.add(this.mapPropertyDescriptorRawReadExpressionToSelectExpression(iPropertyDescriptor,iExpression, iMapping, operationLocales, tableName));
                     }
                     //console.log("A - "+objectDescriptor+" - "+ iExpression);
-                    else if(isReadOperationForSingleObject && !iIsInlineReadExpression) {
+                    // else if(isReadOperationForSingleObject && !iIsInlineReadExpression) {
+                    else if(!iIsInlineReadExpression) {
                         /*
                             we find our primaryKey on the other side, we can just use the converter since we have the primary key value:
                         */
+
+
+                        //This fixes staffingHistory, but all positions in the childPositions array are missing titles.
+                        //Consider this a proof of concept instead of a fix
+
+                        //This is breaking for titles because that IS an inline read expression
+                       if (isReadOperationForSingleObject) {
                         iReadOperationCriteria = iObjectRuleConverter.convertCriteriaForValue(typeof criteria.parameters === "string" ? criteria.parameters : criteria.parameters.id);
+                       } else {
+                        iReadOperationCriteria = criteria;
+                       }
+
 
                         rawDataOperation.criteria = iReadOperationCriteria;
 
